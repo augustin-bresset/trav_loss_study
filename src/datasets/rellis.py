@@ -31,6 +31,7 @@ class Rellis3D(Dataset):
         max_rad=50,
         transform=None,
         feat_dup=True,
+        shuffle=True,
     ):
         super().__init__(root_dir, transform, None)
 
@@ -39,6 +40,7 @@ class Rellis3D(Dataset):
         self.max_samples = max_samples
         self.max_rad = max_rad
         self.feat_dup = feat_dup
+        self.shuffle = shuffle
         self.remap_cfg = remap_cfg
         self.num_auxiliary_classes_ = 10
 
@@ -90,8 +92,9 @@ class Rellis3D(Dataset):
         ]
 
         if self.max_samples is not None and len(self.file_name_df) > self.max_samples:
-            # if len(self.file_name_df) > self.max_samples:
             self.file_name_df = self.file_name_df.sample(self.max_samples)
+            if not self.shuffle:
+                self.file_name_df = self.file_name_df.sort_values("file_name").reset_index(drop=True)
 
         self.file_name_df["file_name"] = [
             os.path.join(self.root_dir, "Rellis-3D", f) for f in self.file_name_df["file_name"]

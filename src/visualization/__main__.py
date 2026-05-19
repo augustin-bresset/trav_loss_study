@@ -15,8 +15,8 @@ DATASET_CLASSES = {
 }
 
 DATASET_KWARGS = {
-    "goose":   lambda a: dict(root_dir=a.root, split=a.split, max_samples=a.max_samples),
-    "rellis":  lambda a: dict(root_dir=a.root, split=a.split, max_samples=a.max_samples),
+    "goose":   lambda a: dict(root_dir=a.root, split=a.split, max_samples=a.max_samples, shuffle=False),
+    "rellis":  lambda a: dict(root_dir=a.root, split=a.split, max_samples=a.max_samples, shuffle=False),
     "kitti":   lambda a: dict(root=a.root, split=a.split),
     "outback": lambda a: dict(root_dir=a.root, split=a.split, max_samples=a.max_samples),
 }
@@ -46,6 +46,10 @@ Examples:
                         help="Starting frame index. Default: 0")
     parser.add_argument("--max-samples", type=int, default=None,
                         help="Cap dataset size (useful for large datasets)")
+    parser.add_argument("--trav-cfg", default=None,
+                        help="Path to traversability config yaml "
+                             "(e.g. resources/goose_cfg_trav.yaml). "
+                             "Enables the traversability overlay in the viewer.")
     args = parser.parse_args()
 
     # Build dataset
@@ -65,7 +69,14 @@ Examples:
     except FileNotFoundError:
         print(f"[viz] No label config found at {cfg_path} — using auto colors.")
 
-    DatasetViewer.launch(dataset, label_cfg, start_idx=args.idx)
+    # Load traversability config (optional)
+    trav_cfg = None
+    if args.trav_cfg:
+        with open(args.trav_cfg) as f:
+            trav_cfg = yaml.safe_load(f)
+        print(f"[viz] Traversability config loaded from {args.trav_cfg}")
+
+    DatasetViewer.launch(dataset, label_cfg, trav_cfg, start_idx=args.idx)
 
 
 if __name__ == "__main__":

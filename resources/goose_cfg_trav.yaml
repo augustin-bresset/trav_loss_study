@@ -1,0 +1,5 @@
+traversable_map:
+  - 23 # Asphalt
+  - 31 # Soil
+  - 50 # Low grass
+  - 51 # High grass

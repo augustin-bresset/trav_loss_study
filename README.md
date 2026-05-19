@@ -8,8 +8,12 @@ It means that what is labeled is almost always Positive.
 
 ### 1. Installation
 
+Dependancies of Torchparse
 ```bash
 sudo apt-get install libsparsehash-dev
+```
+
+```bash
 conda env update -f environment.yml
 conda activate trav_loss
 ```
@@ -30,16 +34,22 @@ Output files are saved to `resources/<dataset>_cfg.yaml`.
 ### 3. Visualize a dataset
 
 ```bash
-python -m src.visualization --dataset goose  --root /data/GOOSE  --cfg resources/goose_cfg.yaml
-python -m src.visualization --dataset rellis --root /data/RELLIS --cfg resources/rellis_cfg.yaml
-python -m src.visualization --dataset kitti  --root /data/KITTI  --split val
+python -m src.visualization --dataset goose  --root data/GOOSE  --cfg resources/goose_cfg.yaml
+python -m src.visualization --dataset rellis --root data/RELLIS --cfg resources/rellis_cfg.yaml
+python -m src.visualization --dataset kitti  --root data/KITTI  --split val
 ```
 
 | Key | Action |
 |-----|--------|
-| `→` / `L` | next frame |
-| `←` / `H` | previous frame |
+| `>` / `L` | next frame |
+| `<` / `H` | previous frame |
 | `R` | reset camera |
+
+```bash
+python -m src.visualization --dataset goose --root data/goose \
+    --cfg resources/goose_cfg.yaml \
+    --trav-cfg resources/goose_cfg_trav.yaml
+```
 
 Use the left panel to filter classes and inspect per-frame class distributions.
 
