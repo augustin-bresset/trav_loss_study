@@ -1,5 +1,6 @@
-from .label_heights import process_dataset
+from .build_label_cfg import build_label_cfg
+
 
 __all__ = [
-    "process_dataset",
+    "build_label_cfg",
 ]

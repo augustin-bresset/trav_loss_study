@@ -28,9 +28,9 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python -m src.visualization --dataset goose  --root /data/GOOSE  --cfg resources/goose_cfg.yaml
-  python -m src.visualization --dataset rellis --root /data/RELLIS  --cfg resources/rellis_cfg.yaml
-  python -m src.visualization --dataset kitti  --root /data/KITTI   --split val
+  python -m src.visualization --dataset goose  --root data/GOOSE  --cfg resources/goose_cfg.yaml
+  python -m src.visualization --dataset rellis --root data/RELLIS  --cfg resources/rellis_cfg.yaml
+  python -m src.visualization --dataset kitti  --root data/KITTI   --split val
         """,
     )
     parser.add_argument("--dataset", required=True, choices=list(DATASET_CLASSES),
