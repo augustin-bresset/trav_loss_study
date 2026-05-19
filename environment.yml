@@ -1,45 +1,12 @@
 name: trav_loss
-
 channels:
-  - pytorch
-  - nvidia
-  - conda-forge
   - defaults
-
 dependencies:
-  - python=3.11
-  - pip
-
-  # PyTorch + CUDA (driver 13.0 is backward-compatible with toolkit 12.4)
-  - pytorch=2.5.1
+  - pytorch
   - torchvision
+  - torchaudio
   - pytorch-cuda=12.4
-
-  # Core scientific stack
-  - numpy=1.26
+  - open3d
+  - torch-geometric
   - pandas
-  - scipy
-  - matplotlib
-  - pyyaml
-  - tqdm
-
-  # Build tools required by torchsparse
-  - cmake
-  - ninja
-
-  - pip:
-    # PyTorch Geometric + backends
-    - torch-scatter
-    - torch-sparse
-    - torch-cluster
-    - torch-geometric
-
-    # Sparse convolutions (MinkUNet backbone)
-    # Requires: sudo apt-get install libsparsehash-dev
-    - git+https://github.com/augustin-bresset/torchsparse.git
-
-    # Interactive 3D viewer
-    - open3d
-
-    # Extras
-    - einops
+prefix: /home/abresset/miniconda3/envs/trav_loss
