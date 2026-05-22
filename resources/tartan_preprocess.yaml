@@ -1,0 +1,14 @@
+data:
+  source: "/mnt/vault-fellowship/tartan/"
+  lidar_subdir: "velodyne_0"
+  poses_subdir: "gicp_poses"
+  max_rad: 50.0             # range filter applied before labeling (metres)
+
+robot:
+  shape: "square"           # "square" or "round"
+  size: 3.0                 # footprint side length or diameter (metres)
+  height_min: -10.0         # points below this are ignored during labeling
+  height_max:  1.5          # points above this are ignored during labeling
+
+labeler:
+  trajectory_window: 200    # number of future poses used to assign trav=1

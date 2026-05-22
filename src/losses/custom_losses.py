@@ -16,15 +16,13 @@ class ClassificationCriterion(nn.Module):
         self.return_individual = return_individual
 
     def forward(self, input, target):
-        loss = 0
-        ce_loss += self.ce(input, target)
-        lovasz_loss += self.lovasz(input, target.long())
-        dice_loss += self.dice(input, target.long())
+        ce_loss = self.ce(input, target)
+        lovasz_loss = self.lovasz(input, target.long())
+        dice_loss = self.dice(input, target.long())
         loss = (ce_loss + lovasz_loss + dice_loss) / 3
         if self.return_individual:
             return loss, (ce_loss.item(), lovasz_loss.item(), dice_loss.item())
-        else:
-            return loss
+        return loss
 
 
 class BinaryClassificationCriterion(nn.Module):
@@ -36,15 +34,13 @@ class BinaryClassificationCriterion(nn.Module):
         self.return_individual = return_individual
 
     def forward(self, input, target):
-        loss = 0
-        ce_loss += self.ce(input, target)
-        lovasz_loss += self.lovasz(input, target.long())
-        dice_loss += self.dice(input, target.long())
+        ce_loss = self.ce(input, target.float())
+        lovasz_loss = self.lovasz(input, target.long())
+        dice_loss = self.dice(input, target.long())
         loss = (ce_loss + lovasz_loss + dice_loss) / 3
         if self.return_individual:
             return loss, (ce_loss.item(), lovasz_loss.item(), dice_loss.item())
-        else:
-            return loss
+        return loss
 
 
 class CategoricalMSE(nn.Module):

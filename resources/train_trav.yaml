@@ -1,0 +1,32 @@
+data:
+  root: /mnt/vault-fellowship/tartan/
+  voxel_size: 0.1       # metres
+  max_rad: 50.0          # same filter used during trav_label preprocessing
+  train_frac: 0.8        # fraction of sequences for training
+
+model:
+  in_channels: 4         # x, y, z, intensity
+  cr: 1.0                # channel-width multiplier (0.5 for lightweight run)
+
+training:
+  epochs: 20
+  batch_size: 4
+  lr: 1e-3
+  num_workers: 4
+  device: cuda
+
+loss:
+  name: bce              # bce | focal | upu | nnpu
+
+  # focal params (used when name: focal)
+  gamma: 2.0
+  pos_weight: 5.0        # ~1/pos_ratio
+
+  # upu / nnpu params (used when name: upu or nnpu)
+  prior: 0.06            # estimated fraction of truly positive voxels
+  beta: 0.0              # nnpu floor (default 0)
+
+logging:
+  log_dir: data/logs/trav/
+  save_dir: data/checkpoints/trav/
+  exp_name: bce_run      # override per experiment: focal_run, upu_run, nnpu_run
