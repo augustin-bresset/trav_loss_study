@@ -41,8 +41,10 @@ from src.models import (
     TorchSparseMinkUNet, 
     MinkUNetWithAuxDecoder,
 )
+# Private Import
 
 from .utils import to_device
+
 
 DATASETS = {
     "rellis3d": Rellis3D,
@@ -50,28 +52,14 @@ DATASETS = {
     "outback": Outback,
 }
 
+
 class Trainer:
     def __init__(self, args):
         self.args = args
         self.device = self.args.device
-        
-        self._init_data_loader()
-        self._init_model()
-        self._init_loss()
-        self._init_optimizer()
-        self._init_logger()
-        self._init_paths()
-        self._init_training_state()
 
+        self.lambda_ = float(self.args.lambda_aux)
 
-        print(f"Training on device: {self.device}")
-        print(f"Saving logs to {args.log_dir}")
-        print(f"Saving models to {self.model_save_path}")
-        print(f"Loss functions: {', '.join(args.losses)}")
-        print(f"Training Samples : {len(self.source_dataset)}")
-        print(f"Validation Samples : {len(self.source_val_dataset)}")
-
-    def _init_data_loader(self):
         source_ds = list(self.args.source_datasets.keys())[0]
         self.source_dataset = DATASETS[source_ds](
             root_dir=self.args.source_datasets[source_ds]["root"],
@@ -125,81 +113,137 @@ class Trainer:
             collate_fn=self.collate_fn,
         )
 
-    def _init_model(self):
-        self.model = MinkUNetWithAuxDecoder(
-            in_features=4,
-            num_classes=self.source_dataset.num_classes_,
-            num_auxiliary_classes=self.source_dataset.num_auxiliary_classes_,
-            voxel_size=self.args.voxel_size,
-            cylindrical_coordinates=self.args.cylindrical_coordinates,
-            cr=self.args.cr,
-            use_spatial_context=self.args.use_spatial_context,
-            spatial_context_out_channels=self.args.spatial_context_out_channels,
-        )
 
-        # Go from pre existant model
-        if hasattr(self.args, "load_ckpt") and self.args.load_ckpt is not None:
-            self.model.load_state_dict(torch.load(self.args.load_ckpt))
+        if self.args.predictions_only:
+            self.pred_datasets_list = [
+                DATASETS[ds](
+                    root_dir=self.args.pred_datasets[ds]["root"],
+                    remap_cfg=self.args.pred_datasets[ds]["cfg"],
+                    split=self.args.pred_datasets[ds]["split"],
+                    transform=TorchSparseQuantize(voxel_size=self.args.voxel_size),
+                )
+                for ds in self.args.pred_datasets.keys()
+            ]
 
-        self.model.to_(self.device)
-        print(f"Model is on {self.model.device}")
-    
-    def _init_loss(self):
+            self.pred_loaders = {
+                ds: DataLoader(
+                    pred_dataset,
+                    batch_size=self.args.batch_size,
+                    shuffle=False,
+                    num_workers=self.args.num_workers,
+                    pin_memory=True,
+                    collate_fn=self.collate_fn,
+                )
+                for ds, pred_dataset in zip(
+                    list(self.args.pred_datasets.keys()),
+                    self.pred_datasets_list,
+                )
+            }
+
+            self.pred_models = {
+                model_name: MinkUNetWithAuxDecoder(
+                    in_features=4,
+                    num_classes=self.source_dataset.num_classes_,
+                    num_auxiliary_classes=self.source_dataset.num_auxiliary_classes_,
+                    voxel_size=self.args.voxel_size,
+                    cylindrical_coordinates=self.args.cylindrical_coordinates,
+                    cr=self.args.cr,
+                    use_spatial_context=self.args.pred_models[model_name]["use_spatial_context"],
+                    spatial_context_out_channels=self.args.spatial_context_out_channels,
+                )
+                for model_name in self.args.pred_models.keys()
+            }
+
+            print(self.pred_models)
+
+            for model_name, model_cfg in self.args.pred_models.items():
+                self.pred_models[model_name].load_state_dict(torch.load(model_cfg['ckpt']))
+
+        else:
+            self.model = MinkUNetWithAuxDecoder(
+                in_features=4,
+                num_classes=self.source_dataset.num_classes_,
+                num_auxiliary_classes=self.source_dataset.num_auxiliary_classes_,
+                voxel_size=self.args.voxel_size,
+                cylindrical_coordinates=self.args.cylindrical_coordinates,
+                cr=self.args.cr,
+                use_spatial_context=self.args.use_spatial_context,
+                spatial_context_out_channels=self.args.spatial_context_out_channels,
+            )
+
+            if hasattr(self.args, "load_ckpt") and self.args.load_ckpt is not None:
+                self.model.load_state_dict(torch.load(self.args.load_ckpt))
+
+            self.model.to_(self.device)
+            print(f"Model is on {self.model.device}")
+
+            self.optimizer = torch.optim.Adam(
+                self.model.parameters(),
+                lr=self.args.lr,
+                weight_decay=self.args.opt_weight_decay,
+            )
+
+            self.scaler = torch.cuda.amp.GradScaler()
+
+            if self.args.lr_scheduler == "plateau":
+                self.lr_scheduler = ReduceLROnPlateau(
+                    self.optimizer, mode="min", factor=0.5, patience=3
+                )
+            elif self.args.lr_scheduler == "cosine":
+                self.lr_scheduler = CosineAnnealingWarmRestarts(
+                    self.optimizer,
+                    T_0=max(len(self.source_loader) // 30, 1),
+                    T_mult=1,
+                    eta_min=0,
+                )
+            elif self.args.lr_scheduler == "step":
+                self.lr_scheduler = StepLR(self.optimizer, step_size=10, gamma=0.1)
+            else:
+                raise NotImplementedError(
+                    f"LR scheduler {args.lr_scheduler} not implemented"
+                )
+
+        with open(self.args.labels_cfg, "r") as file:
+            self.semantic_map = yaml.safe_load(file)["semantic_map"]
+
+        
+
+        self.log_dir = os.path.join(self.args.log_dir, self.args.exp_name)
+        self.logger = Logger(self.log_dir)
+
         self.segmentation_loss = ClassificationCriterion(
             num_classes=self.source_dataset.num_classes_,
             ignore_index=0,
             losses=self.args.segmentation_losses,
         )
 
-    def _init_optimizer(self):
-        # Optimizer
-        self.optimizer = torch.optim.Adam(
-            self.model.parameters(),
-            lr=self.args.lr,
-            weight_decay=self.args.opt_weight_decay,
-        )
-        # Scaler (opti vram)
-        self.scaler = torch.cuda.amp.GradScaler()
-        
-        # Learning Scheduler
-        if self.args.lr_scheduler == "plateau":
-            self.args.lr_scheduler = ReduceLROnPlateau(
-                self.optimizer, mode="min", factor=0.5, patience=3
-            )
-        elif self.args.lr_scheduler == "cosine":
-            self.args.lr_scheduler = CosineAnnealingWarmRestarts(
-                self.optimizer,
-                T_0=max(len(self.source_loader) // 30, 1),
-                T_mult=1,
-                eta_min=0,
-            )
-        elif self.args.lr_scheduler == "step":
-            self.args.lr_scheduler = StepLR(self.optimizer, step_size=10, gamma=0.1)
-        else:
-            raise NotImplementedError(
-                f"LR scheduler {self.args.lr_scheduler} not implemented"
-            )
-
-    def _init_logger(self):
-        self.logger = Logger(
-            log_dir=os.path.join(self.args.log_dir, self.args.exp_name)
+        self.auxiliary_loss = ClassificationCriterion(
+            num_classes=self.source_dataset.num_auxiliary_classes_,
+            ignore_index=0,
+            losses=self.args.auxiliary_losses,
         )
 
-    def _init_paths(self):
+        self.model_name = self.args.model_name
         self.model_save_path = os.path.join(
-            self.args.model_save_path, self.args.model_name, self.args.exp_name
+            self.args.model_save_path, self.model_name, self.args.exp_name
         )
-
         os.makedirs(self.model_save_path, exist_ok=True)
 
-    def _init_training_state(self):
         self.training_history = {}
+
         self.best_model_path = None
         self.latest_model_path = None
         self.best_loss = np.inf
         self.best_acc = 0
         self.best_iou = 0
         self.best_epoch = 0
+
+        print(f"Training on device: {self.device}")
+        print(f"Saving logs to {args.log_dir}")
+        print(f"Saving models to {self.model_save_path}")
+        print(f"Loss functions: {', '.join(args.segmentation_losses)}")
+        print(f"Training Samples : {len(self.source_dataset)}")
+        print(f"Validation Samples : {len(self.source_val_dataset)}")
 
     def log_init(self):
         pass
@@ -305,7 +349,7 @@ class Trainer:
                 
                 main_output = out["main_output"]
 
-                main_loss, main_loss_info = self.loss(
+                main_loss, main_loss_info = self.segmentation_loss(
                     main_output, source_batch["y"]
                 )
 
@@ -353,7 +397,7 @@ class Trainer:
 
         return info
 
-    def validate(self):
+    def validate(self, model):
         self.model.eval()
         total_loss = 0
         preds = []
@@ -367,7 +411,7 @@ class Trainer:
                 preds.extend(torch.argmax(main_output, dim=1).cpu().numpy())
                 labels.extend(batch["y"].cpu().numpy())
 
-                loss, loss_info = self.loss(main_output, batch["y"])
+                loss, loss_info = self.segmentation_loss(main_output, batch["y"])
                 total_loss += loss.item()
 
                 print(
@@ -401,6 +445,27 @@ class Trainer:
 
         return info
 
+    def dict_to_device(self, data, device):
+        for key, value in data.items():
+            if torch.is_tensor(value):
+                data[key] = value.to(device)
+            elif isinstance(value, list):
+                data[key] = self.list_to_device(value, device)
+            elif isinstance(value, dict):
+                data[key] = to_device(value, device)
+            elif isinstance(value, SparseTensor):
+                data[key] = data[key].to(device)
+        return data
+
+    def list_to_device(self, data, device):
+        for key, value in enumerate(data):
+            if torch.is_tensor(value):
+                data[key] = value.to(device)
+            elif isinstance(value, list):
+                data[key] = self.list_to_device(value, device)
+            elif isinstance(value, dict):
+                data[key] = to_device(value, device)
+        return data
 
     def save(self, path):
         torch.save(self.model.state_dict(), path)
@@ -424,63 +489,3 @@ class Trainer:
                         tag + "/grad", value.grad.data.cpu().numpy(), epoch
                     )
 
-    def test(self):
-        self.model.eval()
-        all_metrics = {}
-
-        with torch.no_grad():
-            for ds_name, loader in self.target_val_loaders.items():
-                # all_metrics[ds_name] = {}
-                all_preds = []
-                all_labels = []
-                for i, batch in enumerate(loader):
-                    batch = to_device(batch, self.device)
-                    out = self.model(batch, get_main=True, get_aux=False)
-                    main_output = out["main_output"]
-                    preds = torch.argmax(main_output, dim=1).cpu().numpy()
-                    labels = batch["y"].cpu().numpy()
-
-                    all_preds.append(preds)
-                    all_labels.append(labels)
-
-                    print(
-                        f"\rTesting {ds_name} [{i+1}/{len(loader)}] - ",  # , end="",
-                        end="",
-                    )
-
-                    if self.args.max_steps is not None and i >= self.args.max_steps:
-                        break
-
-                print()
-
-                all_preds = np.concatenate(all_preds)
-                all_labels = np.concatenate(all_labels)
-
-                conf_matrix = confusion_matrix_from_arrays(
-                    all_labels, all_preds  # , self.source_dataset.num_classes_
-                )
-                acc, acc_per_class = stats_accuracy_per_class(
-                    conf_matrix, ignore_list=[0]
-                )
-                iou, iou_per_class = stats_iou_per_class(conf_matrix, ignore_list=[0])
-                f1, f1score_per_class = stats_f1score_per_class(
-                    conf_matrix, ignore_list=[0]
-                )
-
-                all_metrics[f"{ds_name}/acc"] = acc
-                all_metrics[f"{ds_name}/iou"] = iou
-                all_metrics[f"{ds_name}/f1score"] = f1
-                for i in range(len(acc_per_class)):
-                    if i not in self.semantic_map:
-                        self.semantic_map[i] = self.semantic_map[0]  # void
-                    all_metrics[f"{ds_name}/acc/{self.semantic_map[i]}"] = (
-                        acc_per_class[i]
-                    )
-                    all_metrics[f"{ds_name}/iou/{self.semantic_map[i]}"] = (
-                        iou_per_class[i]
-                    )
-                    all_metrics[f"{ds_name}/f1score/{self.semantic_map[i]}"] = (
-                        f1score_per_class[i]
-                    )
-
-        return all_metrics

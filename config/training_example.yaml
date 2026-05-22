@@ -1,0 +1,22 @@
+device: "cuda:1"
+source_dataset:
+  goose: "/path/to/goose"
+batch_size: 2
+num_workers: 4
+lr: 0.001
+opt_weight_decay: 0.0001
+lr_scheduler: "plateau"
+log_dir: "/path/to/log_dir"
+exp_name: "experiment_name"
+model_name: "model_name"
+model_save_path: "/path/to/model_save_path"
+epochs: 100
+early_stopping_patience: 10
+early_stopping_metric: "loss"
+loss_fn: "cross_entropy"
+voxel_size: 0.1
+cylindrical_coordinates: false
+cr: 1.0
+use_spatial_context: false
+losses:
+  - "cross_entropy"

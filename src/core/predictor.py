@@ -50,28 +50,18 @@ DATASETS = {
     "outback": Outback,
 }
 
-class Trainer:
+MODEL_CLASS = {
+    "minkunet": TorchSparseMinkUNet,
+}
+
+class Predictor:
     def __init__(self, args):
         self.args = args
         self.device = self.args.device
+        self.model_path = self.args.model_path
         
-        self._init_data_loader()
-        self._init_model()
-        self._init_loss()
-        self._init_optimizer()
-        self._init_logger()
-        self._init_paths()
-        self._init_training_state()
+        self.lambda_ = float(self.args.lambda_aux)
 
-
-        print(f"Training on device: {self.device}")
-        print(f"Saving logs to {args.log_dir}")
-        print(f"Saving models to {self.model_save_path}")
-        print(f"Loss functions: {', '.join(args.losses)}")
-        print(f"Training Samples : {len(self.source_dataset)}")
-        print(f"Validation Samples : {len(self.source_val_dataset)}")
-
-    def _init_data_loader(self):
         source_ds = list(self.args.source_datasets.keys())[0]
         self.source_dataset = DATASETS[source_ds](
             root_dir=self.args.source_datasets[source_ds]["root"],
@@ -116,84 +106,123 @@ class Trainer:
             collate_fn=self.collate_fn,
         )
 
-        self.source_val_loader = DataLoader(
-            self.source_val_dataset,
-            batch_size=self.args.batch_size,
-            shuffle=False,
-            num_workers=self.args.num_workers,
-            pin_memory=True,
-            collate_fn=self.collate_fn,
-        )
+        if self.args.predictions_only:
+            self.pred_datasets_list = [
+                DATASETS[ds](
+                    root_dir=self.args.pred_datasets[ds]["root"],
+                    remap_cfg=self.args.pred_datasets[ds]["cfg"],
+                    split=self.args.pred_datasets[ds]["split"],
+                    transform=TorchSparseQuantize(voxel_size=self.args.voxel_size),
+                )
+                for ds in self.args.pred_datasets.keys()
+            ]
 
-    def _init_model(self):
-        self.model = MinkUNetWithAuxDecoder(
-            in_features=4,
-            num_classes=self.source_dataset.num_classes_,
-            num_auxiliary_classes=self.source_dataset.num_auxiliary_classes_,
-            voxel_size=self.args.voxel_size,
-            cylindrical_coordinates=self.args.cylindrical_coordinates,
-            cr=self.args.cr,
-            use_spatial_context=self.args.use_spatial_context,
-            spatial_context_out_channels=self.args.spatial_context_out_channels,
-        )
+            self.pred_loaders = {
+                ds: DataLoader(
+                    pred_dataset,
+                    batch_size=self.args.batch_size,
+                    shuffle=False,
+                    num_workers=self.args.num_workers,
+                    pin_memory=True,
+                    collate_fn=self.collate_fn,
+                )
+                for ds, pred_dataset in zip(
+                    list(self.args.pred_datasets.keys()),
+                    self.pred_datasets_list,
+                )
+            }
 
-        # Go from pre existant model
-        if hasattr(self.args, "load_ckpt") and self.args.load_ckpt is not None:
-            self.model.load_state_dict(torch.load(self.args.load_ckpt))
+            self.pred_models = {
+                model_name: MinkUNetWithAuxDecoder(
+                    in_features=4,
+                    num_classes=self.source_dataset.num_classes_,
+                    num_auxiliary_classes=self.source_dataset.num_auxiliary_classes_,
+                    voxel_size=self.args.voxel_size,
+                    cylindrical_coordinates=self.args.cylindrical_coordinates,
+                    cr=self.args.cr,
+                    use_spatial_context=self.args.pred_models[model_name]["use_spatial_context"],
+                    spatial_context_out_channels=self.args.spatial_context_out_channels,
+                )
+                for model_name in self.args.pred_models.keys()
+            }
 
-        self.model.to_(self.device)
-        print(f"Model is on {self.model.device}")
-    
-    def _init_loss(self):
+            print(self.pred_models)
+
+            for model_name, model_cfg in self.args.pred_models.items():
+                self.pred_models[model_name].load_state_dict(torch.load(model_cfg['ckpt']))
+
+        else:
+            self.model = MinkUNetWithAuxDecoder(
+                in_features=4,
+                num_classes=self.source_dataset.num_classes_,
+                num_auxiliary_classes=self.source_dataset.num_auxiliary_classes_,
+                voxel_size=self.args.voxel_size,
+                cylindrical_coordinates=self.args.cylindrical_coordinates,
+                cr=self.args.cr,
+                use_spatial_context=self.args.use_spatial_context,
+                spatial_context_out_channels=self.args.spatial_context_out_channels,
+            )
+
+            if hasattr(self.args, "load_ckpt") and self.args.load_ckpt is not None:
+                self.model.load_state_dict(torch.load(self.args.load_ckpt))
+
+            self.model.to_(self.device)
+            print(f"Model is on {self.model.device}")
+
+            self.optimizer = torch.optim.Adam(
+                self.model.parameters(),
+                lr=self.args.lr,
+                weight_decay=self.args.opt_weight_decay,
+            )
+
+            self.scaler = torch.cuda.amp.GradScaler()
+
+            if self.args.lr_scheduler == "plateau":
+                self.lr_scheduler = ReduceLROnPlateau(
+                    self.optimizer, mode="min", factor=0.5, patience=3
+                )
+            elif self.args.lr_scheduler == "cosine":
+                self.lr_scheduler = CosineAnnealingWarmRestarts(
+                    self.optimizer,
+                    T_0=max(len(self.source_loader) // 30, 1),
+                    T_mult=1,
+                    eta_min=0,
+                )
+            elif self.args.lr_scheduler == "step":
+                self.lr_scheduler = StepLR(self.optimizer, step_size=10, gamma=0.1)
+            else:
+                raise NotImplementedError(
+                    f"LR scheduler {args.lr_scheduler} not implemented"
+                )
+
+        with open(self.args.labels_cfg, "r") as file:
+            self.semantic_map = yaml.safe_load(file)["semantic_map"]
+
+        
+
+        self.log_dir = os.path.join(self.args.log_dir, self.args.exp_name)
+        self.logger = Logger(self.log_dir)
+
         self.segmentation_loss = ClassificationCriterion(
             num_classes=self.source_dataset.num_classes_,
             ignore_index=0,
             losses=self.args.segmentation_losses,
         )
 
-    def _init_optimizer(self):
-        # Optimizer
-        self.optimizer = torch.optim.Adam(
-            self.model.parameters(),
-            lr=self.args.lr,
-            weight_decay=self.args.opt_weight_decay,
-        )
-        # Scaler (opti vram)
-        self.scaler = torch.cuda.amp.GradScaler()
-        
-        # Learning Scheduler
-        if self.args.lr_scheduler == "plateau":
-            self.args.lr_scheduler = ReduceLROnPlateau(
-                self.optimizer, mode="min", factor=0.5, patience=3
-            )
-        elif self.args.lr_scheduler == "cosine":
-            self.args.lr_scheduler = CosineAnnealingWarmRestarts(
-                self.optimizer,
-                T_0=max(len(self.source_loader) // 30, 1),
-                T_mult=1,
-                eta_min=0,
-            )
-        elif self.args.lr_scheduler == "step":
-            self.args.lr_scheduler = StepLR(self.optimizer, step_size=10, gamma=0.1)
-        else:
-            raise NotImplementedError(
-                f"LR scheduler {self.args.lr_scheduler} not implemented"
-            )
-
-    def _init_logger(self):
-        self.logger = Logger(
-            log_dir=os.path.join(self.args.log_dir, self.args.exp_name)
+        self.auxiliary_loss = ClassificationCriterion(
+            num_classes=self.source_dataset.num_auxiliary_classes_,
+            ignore_index=0,
+            losses=self.args.auxiliary_losses,
         )
 
-    def _init_paths(self):
+        self.model_name = self.args.model_name
         self.model_save_path = os.path.join(
-            self.args.model_save_path, self.args.model_name, self.args.exp_name
+            self.args.model_save_path, self.model_name, self.args.exp_name
         )
-
         os.makedirs(self.model_save_path, exist_ok=True)
 
-    def _init_training_state(self):
         self.training_history = {}
+
         self.best_model_path = None
         self.latest_model_path = None
         self.best_loss = np.inf
@@ -201,55 +230,15 @@ class Trainer:
         self.best_iou = 0
         self.best_epoch = 0
 
+        print(f"Training on device: {self.device}")
+        print(f"Saving logs to {args.log_dir}")
+        print(f"Saving models to {self.model_save_path}")
+        print(f"Loss functions: {', '.join(args.segmentation_losses)}")
+        print(f"Training Samples : {len(self.source_dataset)}")
+        print(f"Validation Samples : {len(self.source_val_dataset)}")
+
     def log_init(self):
         pass
-
-    def train(self):
-        self.log_init()
-        for epoch in range(self.args.epochs):
-            train_info = self.train_epoch(epoch)
-            log_epoch_info = {f"train/{k}": v for k, v in train_info.items()}
-            self.save_to_log(self.args.log_dir, self.logger, log_epoch_info, epoch + 1)
-
-            val_info = self.validate()
-            log_val_info = {f"val/{k}": v for k, v in val_info.items()}
-            self.save_to_log(self.args.log_dir, self.logger, log_val_info, epoch + 1)
-
-            self.training_history[epoch + 1] = {
-                "train": train_info,
-                "val": val_info,
-            }
-
-            if self.best_model_path is None or self.is_best_model(val_info):
-                self.best_model_path = os.path.join(
-                    self.model_save_path, "best_model.pth"
-                )
-                self.save(self.best_model_path)
-                self.best_epoch = epoch
-
-            if self.latest_model_path is not None:
-                try:
-                    os.remove(self.latest_model_path)
-                except Exception as e:
-                    print(e)
-            self.latest_model_path = os.path.join(
-                self.model_save_path, f"latest_model_{epoch+1}eps.pth"
-            )
-            self.save(self.latest_model_path)
-
-            if (epoch) % self.args.test_freq == 0:
-                test_metrics = self.test()
-                log_test_info = {f"test/{k}": v for k, v in test_metrics.items()}
-                self.save_to_log(
-                    self.args.log_dir, self.logger, log_test_info, epoch + 1
-                )
-
-            if self.execute_callbacks(epoch):
-                break
-
-        test_metrics = self.test()
-        log_test_info = {f"test/{k}": v for k, v in test_metrics.items()}
-        self.save_to_log(self.args.log_dir, self.logger, log_test_info, epoch + 1)
 
     def execute_callbacks(self, epoch):
         # Early Stopping
@@ -259,99 +248,6 @@ class Trainer:
                 return True
         return False
 
-    def is_best_model(self, val_info):
-        if self.args.early_stopping_metric == "loss":
-            k = val_info["loss"] < self.best_loss
-            if k:
-                self.best_loss = val_info["loss"]
-            return k
-        elif self.args.early_stopping_metric == "acc":
-            k = val_info["acc"] > self.best_acc
-            if k:
-                self.best_acc = val_info["acc"]
-            return k
-        elif self.args.early_stopping_metric == "iou":
-            k = val_info["iou"] > self.best_iou
-            if k:
-                self.best_iou = val_info["iou"]
-            return k
-        else:
-            raise NotImplementedError(
-                f"Early stopping withe {self.args.early_stopping_metric} not implemented"
-            )
-
-    def train_epoch(self, epoch):
-        self.model.train()
-
-        source_iter = iter(self.source_loader)
-
-        num_steps = len(self.source_loader)
-        if self.args.max_steps is not None:
-            num_steps = min(num_steps, self.args.max_steps)
-
-        source_losses = []
-
-        main_loss_infos = []
-
-        for i in range(num_steps):
-
-            source_batch = next(source_iter)
-            source_batch = to_device(source_batch, self.device)
-            self.optimizer.zero_grad()
-
-            aux_activate = epoch > self.args.aux_after_epoch
-            with torch.amp.autocast('cuda'):
-                out = self.model(source_batch, get_main=True, get_aux=aux_activate)
-                
-                main_output = out["main_output"]
-
-                main_loss, main_loss_info = self.loss(
-                    main_output, source_batch["y"]
-                )
-
-                loss = main_loss
-
-                
-            # Scaler Backward
-            self.scaler.scale(loss).backward()
-
-            if hasattr(self.args, "clip_grad_norm") and self.args.clip_grad_norm is not None:
-                self.scaler.unscale_(self.optimizer)
-                torch.nn.utils.clip_grad_norm_(
-                    self.model.parameters(), float(self.args.clip_grad_norm)
-                )
-            self.scaler.step(self.optimizer)
-            self.scaler.update()
-
-            main_loss_infos.append(main_loss_info)
-            source_losses.append(main_loss.item())
-
-            if self.args.lr_scheduler == "cosine":
-                self.lr_scheduler.step(epoch + i / num_steps)
-
-            # Cleaning
-            del source_batch, out, main_output, main_loss, loss
-           
-            torch.cuda.empty_cache()
-
-            
-
-            
-
-            print(
-                f"\rEpoch {epoch+1} [{i+1}/{num_steps}] - source_loss : {np.mean(source_losses):.3f}",
-                end="",
-            )
-        print()
-
-        info = {
-            "source_loss": np.mean(source_losses),
-        }
-
-        for key in main_loss_infos[0].keys():
-            info[f"source_loss/{key}"] = np.mean([x[key] for x in main_loss_infos])
-
-        return info
 
     def validate(self):
         self.model.eval()
@@ -367,7 +263,7 @@ class Trainer:
                 preds.extend(torch.argmax(main_output, dim=1).cpu().numpy())
                 labels.extend(batch["y"].cpu().numpy())
 
-                loss, loss_info = self.loss(main_output, batch["y"])
+                loss, loss_info = self.segmentation_loss(main_output, batch["y"])
                 total_loss += loss.item()
 
                 print(
@@ -484,3 +380,45 @@ class Trainer:
                     )
 
         return all_metrics
+
+    def predict(self):
+        print("Predicting ...")
+        with torch.no_grad():
+            print(f"Models : {self.pred_models}")
+            for model_name, model in self.pred_models.items():
+                model.to_(self.device)
+                model.eval()
+                preds_dir = os.path.join(
+                    os.path.dirname(self.args.pred_models[model_name]['ckpt']), "preds"
+                )
+                os.makedirs(preds_dir, exist_ok=True)
+                print(f"Loaders : {self.pred_loaders}")
+                for ds_name, loader in self.pred_loaders.items():
+                    print(f"Predicting {ds_name} with {model_name} ...")
+                    for i, batch in enumerate(loader):
+                        print(
+                            f"\rPredicting {ds_name} with {model_name} [{i+1}/{len(loader)}]", 
+                            end="",
+                        )
+                        batch = to_device(batch, self.device)
+                        batch_ids = batch["pos"][:, 0].cpu().numpy()
+                        assert np.max(batch_ids) == self.args.batch_size - 1, f"{np.max(batch_ids)} != {self.args.batch_size - 1}"
+                        out = model(batch, get_main=True, get_aux=False)
+                        main_output = out["main_output"]
+                        preds = torch.argmax(main_output, dim=1).cpu().numpy()
+                        
+                        for j in range(len(batch["label_file"])):
+                            pred_file = os.path.join(
+                                preds_dir,
+                                os.path.basename(os.path.dirname(batch["label_file"][j])),
+                                os.path.basename(batch["label_file"][j]) + ".pred",
+                            )
+
+                            pred_dir = os.path.dirname(pred_file)
+                            os.makedirs(pred_dir, exist_ok=True)
+
+                            curr_pred = preds[batch_ids == j].astype(np.uint32)
+                            curr_pred.tofile(pred_file)
+
+                print()
+
