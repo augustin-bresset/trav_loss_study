@@ -65,12 +65,18 @@ def read_tb_scalars(log_dir: Path) -> dict[str, list[float]]:
     except ImportError:
         return {}
 
-    ea = EventAccumulator(str(log_dir), size_guidance={"scalars": 0})
-    ea.Reload()
-    return {
-        tag: [e.value for e in ea.Scalars(tag)]
-        for tag in ea.Tags().get("scalars", [])
-    }
+    if not log_dir.exists():
+        return {}
+
+    try:
+        ea = EventAccumulator(str(log_dir), size_guidance={"scalars": 0})
+        ea.Reload()
+        return {
+            tag: [e.value for e in ea.Scalars(tag)]
+            for tag in ea.Tags().get("scalars", [])
+        }
+    except Exception:
+        return {}
 
 
 def summarise(scalars: dict[str, list[float]]) -> dict[str, float | None]:
@@ -139,7 +145,8 @@ def main() -> None:
 
         # print per-run summary immediately so partial results are visible
         f1 = summary["best_val_f1"]
-        print(f"  → status={status}  best_val_f1={f1:.4f if f1 is not None else 'N/A'}")
+        f1_str = f"{f1:.4f}" if f1 is not None else "N/A"
+        print(f"  → status={status}  best_val_f1={f1_str}")
 
     # ── persist ───────────────────────────────────────────────────────────────
     with open(results_json, "w") as f:

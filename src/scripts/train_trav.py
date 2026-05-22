@@ -50,11 +50,14 @@ def load_cfg(yaml_path: str, cli_overrides: list[str]) -> dict:
         node = cfg
         for k in keys[:-1]:
             node = node.setdefault(k, {})
-        # try numeric cast
+        # try numeric cast (int first, then float to handle 1e-3 style)
         try:
-            value = float(value) if "." in value else int(value)
+            value = int(value)
         except ValueError:
-            pass
+            try:
+                value = float(value)
+            except ValueError:
+                pass
         node[keys[-1]] = value
 
     return cfg
