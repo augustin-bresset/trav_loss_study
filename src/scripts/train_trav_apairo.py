@@ -1,8 +1,11 @@
 """Train a SparseTravNet on TartanDrive with a configurable binary loss.
 
+Uses the Apairo-backed dataset (TartanTravTorchDataset).
+Sequences must have been preprocessed with preprocess_trav.py first.
+
 Usage:
-    python -m src.scripts.train_trav resources/train_trav.yaml
-    python -m src.scripts.train_trav resources/train_trav.yaml loss.name=focal
+    python -m src.scripts.train_trav_apairo resources/train_trav.yaml
+    python -m src.scripts.train_trav_apairo resources/train_trav.yaml loss.name=focal
 """
 
 from __future__ import annotations
@@ -11,7 +14,6 @@ import sys
 import os
 import argparse
 from pathlib import Path
-from types import SimpleNamespace
 
 import numpy as np
 import torch
@@ -22,23 +24,12 @@ from torch.utils.tensorboard import SummaryWriter
 # ── project root on path ──────────────────────────────────────────────────────
 sys.path.insert(0, str(Path(__file__).parents[2]))
 
-from src.datasets.tartan_trav_train import TartanTravTrainDataset, trav_collate
+from src.datasets.tartan_trav_torch import TartanTravTorchDataset, trav_collate_apairo
 from src.losses import TRAV_LOSSES
 from src.models.sparse_trav_net import SparseTravNet
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
-
-def _deep_merge(base: dict, overrides: dict) -> dict:
-    """Recursively merge *overrides* into *base*."""
-    out = dict(base)
-    for k, v in overrides.items():
-        if k in out and isinstance(out[k], dict) and isinstance(v, dict):
-            out[k] = _deep_merge(out[k], v)
-        else:
-            out[k] = v
-    return out
-
 
 def load_cfg(yaml_path: str, cli_overrides: list[str]) -> dict:
     with open(yaml_path) as f:
@@ -50,7 +41,6 @@ def load_cfg(yaml_path: str, cli_overrides: list[str]) -> dict:
         node = cfg
         for k in keys[:-1]:
             node = node.setdefault(k, {})
-        # try numeric cast
         try:
             value = float(value) if "." in value else int(value)
         except ValueError:
@@ -87,8 +77,8 @@ def train(cfg: dict) -> None:
         max_rad=ds_cfg["max_rad"],
         train_frac=ds_cfg.get("train_frac", 0.8),
     )
-    train_ds = TartanTravTrainDataset(split="train", **ds_kwargs)
-    val_ds   = TartanTravTrainDataset(split="val",   **ds_kwargs)
+    train_ds = TartanTravTorchDataset(split="train", **ds_kwargs)
+    val_ds   = TartanTravTorchDataset(split="val",   **ds_kwargs)
 
     t_cfg = cfg["training"]
     train_loader = DataLoader(
@@ -97,7 +87,7 @@ def train(cfg: dict) -> None:
         shuffle=True,
         num_workers=t_cfg.get("num_workers", 4),
         pin_memory=True,
-        collate_fn=trav_collate,
+        collate_fn=trav_collate_apairo,
         drop_last=True,
     )
     val_loader = DataLoader(
@@ -106,7 +96,7 @@ def train(cfg: dict) -> None:
         shuffle=False,
         num_workers=t_cfg.get("num_workers", 4),
         pin_memory=True,
-        collate_fn=trav_collate,
+        collate_fn=trav_collate_apairo,
     )
 
     print(f"Train: {len(train_ds)} scans / Val: {len(val_ds)} scans")
@@ -133,15 +123,15 @@ def train(cfg: dict) -> None:
     # ── logging ───────────────────────────────────────────────────────────────
     log_cfg = cfg["logging"]
     exp_name = log_cfg.get("exp_name", loss_name)
-    log_dir = os.path.join(log_cfg["log_dir"], exp_name)
+    log_dir  = os.path.join(log_cfg["log_dir"],  exp_name)
     save_dir = os.path.join(log_cfg["save_dir"], exp_name)
-    os.makedirs(log_dir, exist_ok=True)
+    os.makedirs(log_dir,  exist_ok=True)
     os.makedirs(save_dir, exist_ok=True)
     writer = SummaryWriter(log_dir)
 
-    best_f1 = 0.0
+    best_f1   = 0.0
     best_ckpt = os.path.join(save_dir, "best.pth")
-    scaler = torch.cuda.amp.GradScaler(enabled=device.type == "cuda")
+    scaler    = torch.cuda.amp.GradScaler(enabled=device.type == "cuda")
 
     # ── epoch loop ────────────────────────────────────────────────────────────
     for epoch in range(1, t_cfg["epochs"] + 1):
@@ -151,8 +141,8 @@ def train(cfg: dict) -> None:
         all_logits, all_labels = [], []
 
         for i, batch in enumerate(train_loader):
-            st      = batch["sparse_input"].to(device)
-            labels  = batch["labels"].to(device)
+            st     = batch["sparse_input"].to(device)
+            labels = batch["labels"].to(device)
 
             optimizer.zero_grad()
             with torch.amp.autocast("cuda", enabled=device.type == "cuda"):
@@ -177,8 +167,8 @@ def train(cfg: dict) -> None:
         print()
         scheduler.step()
 
-        train_logits = torch.cat(all_logits)
-        train_labels = torch.cat(all_labels)
+        train_logits  = torch.cat(all_logits)
+        train_labels  = torch.cat(all_labels)
         train_metrics = binary_metrics(train_logits, train_labels)
         train_metrics["loss"] = float(np.mean(train_losses))
 
@@ -201,8 +191,8 @@ def train(cfg: dict) -> None:
                 val_logits_all.append(logits.cpu())
                 val_labels_all.append(labels.cpu())
 
-        val_logits = torch.cat(val_logits_all)
-        val_labels = torch.cat(val_labels_all)
+        val_logits  = torch.cat(val_logits_all)
+        val_labels  = torch.cat(val_labels_all)
         val_metrics = binary_metrics(val_logits, val_labels)
         val_metrics["loss"] = float(np.mean(val_losses))
 
