@@ -23,12 +23,13 @@ class TartanTravTrainDataset(Dataset):
     temporal leakage within a sequence).
 
     Args:
-        tartan_root: Root directory containing one sub-dir per sequence.
-        voxel_size:  Quantization size in metres.
-        max_rad:     Range filter (same value used during preprocessing).
-        split:       'train' or 'val'.
-        train_frac:  Fraction of sequences used for training.
-        seed:        Seed for sequence-level shuffle before split.
+        tartan_root:   Root directory containing one sub-dir per sequence.
+        voxel_size:    Quantization size in metres.
+        max_rad:       Range filter (same value used during preprocessing).
+        split:         'train' or 'val'.
+        train_frac:    Fraction of sequences used for training.
+        seed:          Seed for sequence-level shuffle before split.
+        max_sequences: Cap total sequences before split (None = all).
     """
 
     def __init__(
@@ -39,6 +40,7 @@ class TartanTravTrainDataset(Dataset):
         split: str = "train",
         train_frac: float = 0.8,
         seed: int = 42,
+        max_sequences: int | None = None,
     ) -> None:
         self.voxel_size = voxel_size
         self.max_rad = max_rad
@@ -48,7 +50,9 @@ class TartanTravTrainDataset(Dataset):
 
         rng = np.random.default_rng(seed)
         idx = rng.permutation(len(seq_dirs))
-        n_train = int(len(seq_dirs) * train_frac)
+        if max_sequences is not None:
+            idx = idx[:max_sequences]
+        n_train = int(len(idx) * train_frac)
         split_idx = idx[:n_train] if split == "train" else idx[n_train:]
         seq_dirs = [seq_dirs[i] for i in split_idx]
 

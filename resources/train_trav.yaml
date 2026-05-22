@@ -3,13 +3,14 @@ data:
   voxel_size: 0.1       # metres
   max_rad: 50.0          # same filter used during trav_label preprocessing
   train_frac: 0.8        # fraction of sequences for training
+  max_sequences: 10      # cap total sequences before split (null = all 55)
 
 model:
   in_channels: 4         # x, y, z, intensity
   cr: 1.0                # channel-width multiplier (0.5 for lightweight run)
 
 training:
-  epochs: 20
+  epochs: 10
   batch_size: 4
   lr: 0.001
   num_workers: 4

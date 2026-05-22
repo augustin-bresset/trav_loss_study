@@ -79,6 +79,7 @@ def train(cfg: dict) -> None:
         voxel_size=ds_cfg["voxel_size"],
         max_rad=ds_cfg["max_rad"],
         train_frac=ds_cfg.get("train_frac", 0.8),
+        max_sequences=ds_cfg.get("max_sequences"),
     )
     train_ds = TartanTravTorchDataset(split="train", **ds_kwargs)
     val_ds   = TartanTravTorchDataset(split="val",   **ds_kwargs)
@@ -134,7 +135,7 @@ def train(cfg: dict) -> None:
 
     best_f1   = 0.0
     best_ckpt = os.path.join(save_dir, "best.pth")
-    scaler    = torch.cuda.amp.GradScaler(enabled=device.type == "cuda")
+    scaler    = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
 
     # ── epoch loop ────────────────────────────────────────────────────────────
     for epoch in range(1, t_cfg["epochs"] + 1):
@@ -147,12 +148,20 @@ def train(cfg: dict) -> None:
             st     = batch["sparse_input"].to(device)
             labels = batch["labels"].to(device)
 
+            if st.feats.shape[0] == 0:
+                continue
+
             optimizer.zero_grad()
-            with torch.amp.autocast("cuda", enabled=device.type == "cuda"):
-                logits = model(st)
-                loss   = criterion(logits, labels.float())
+            try:
+                with torch.amp.autocast("cuda", enabled=device.type == "cuda"):
+                    logits = model(st)
+                    loss   = criterion(logits, labels.float())
+            except Exception:
+                continue
 
             scaler.scale(loss).backward()
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             scaler.step(optimizer)
             scaler.update()
 
@@ -187,9 +196,14 @@ def train(cfg: dict) -> None:
             for batch in val_loader:
                 st     = batch["sparse_input"].to(device)
                 labels = batch["labels"].to(device)
-                with torch.amp.autocast("cuda", enabled=device.type == "cuda"):
-                    logits = model(st)
-                    loss   = criterion(logits, labels.float())
+                if st.feats.shape[0] == 0:
+                    continue
+                try:
+                    with torch.amp.autocast("cuda", enabled=device.type == "cuda"):
+                        logits = model(st)
+                        loss   = criterion(logits, labels.float())
+                except IndexError:
+                    continue
                 val_losses.append(loss.item())
                 val_logits_all.append(logits.cpu())
                 val_labels_all.append(labels.cpu())
