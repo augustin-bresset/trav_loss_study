@@ -129,6 +129,11 @@ def train(cfg: dict) -> None:
     save_dir = os.path.join(log_cfg["save_dir"], exp_name)
     os.makedirs(log_dir,  exist_ok=True)
     os.makedirs(save_dir, exist_ok=True)
+
+    # Remove stale event files so study_goose reads only this run's metrics.
+    for f in Path(log_dir).glob("events.out.tfevents.*"):
+        f.unlink()
+
     writer = SummaryWriter(log_dir)
 
     best_f1   = 0.0
