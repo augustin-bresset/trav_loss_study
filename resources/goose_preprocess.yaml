@@ -1,0 +1,25 @@
+data:
+  root: /mnt/vault-fellowship/goose/GOOSE_3D   # GOOSE_3D root (contains train/ val/ test/)
+
+# --- GICP pose estimation ------------------------------------------------
+gicp:
+  voxel_size: 0.3   # down-sampling before registration (metres)
+  max_rad:    50.0  # range filter (metres)
+  max_corr:   1.0   # max correspondence distance for GICP (metres)
+
+# --- Robot footprint for trajectory-based GT labelling -------------------
+robot:
+  radius:     0.75  # half-width of footprint in XY (metres)
+  height_min: -0.3  # lowest point relative to robot centre (metres)
+  height_max:  0.5  # highest point (metres) — above = obstacle, not traversed
+
+# --- Trajectory window ---------------------------------------------------
+labeler:
+  trajectory_window: 50  # ± this many scans form the temporal window
+
+# --- Terrain-based traversability estimator ------------------------------
+terrain:
+  cell_size:       0.5   # 2-D grid cell size (metres)
+  max_height_var:  0.04  # max height variance for flat cell (m²)
+  max_height_diff: 1.5   # max height above ground plane (metres)
+  min_pts:         3     # minimum points per cell to trust the estimate

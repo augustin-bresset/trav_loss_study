@@ -9,4 +9,11 @@ dependencies:
   - open3d
   - torch-geometric
   - pandas
+  - scipy
+  - pip
+  - pip:
+    - torchsparse        # pip install torchsparse  (requires CUDA build)
+    - apairo             # pip install -e /home/abresset/dev/apairo
+    - apairo-visu        # pip install -e /home/abresset/dev/apairo_visu
+    - tensorboard
 prefix: /home/abresset/miniconda3/envs/trav_loss

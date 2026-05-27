@@ -1,0 +1,46 @@
+# Label config for composite traversability visualisation.
+#
+# Label encoding (bits):
+#   bit 0 (+1): trav_gt       — trajectory ground truth
+#   bit 1 (+2): trav_terrain  — terrain-based estimate
+#   bit 2 (+4): semantic_trav — GOOSE semantic classes mapped to traversable
+#   bit 3 (+8): model_pred    — trained model prediction (optional overlay)
+#
+# Values 0-7 (without model), 0-15 (with model).
+
+color_map:
+  0:  "#808080"   # none traversable              gray
+  1:  "#27AE60"   # GT only                       green
+  2:  "#2980B9"   # terrain only                  blue
+  3:  "#F4D03F"   # GT + terrain                  yellow
+  4:  "#8E44AD"   # semantic only                 purple
+  5:  "#1ABC9C"   # GT + semantic                 teal
+  6:  "#00BCD4"   # terrain + semantic            cyan
+  7:  "#FFFFFF"   # GT + terrain + semantic       white (full agreement)
+  # +8 variants: model prediction additionally set (tinted orange)
+  8:  "#E67E22"   # model only                    orange
+  9:  "#58D68D"   # GT + model                    light green
+  10: "#5DADE2"   # terrain + model               light blue
+  11: "#F9E79F"   # GT + terrain + model          light yellow
+  12: "#BB8FCE"   # semantic + model              light purple
+  13: "#76D7C4"   # GT + semantic + model         light teal
+  14: "#76D7C4"   # terrain + semantic + model    light cyan
+  15: "#FDFEFE"   # all four agree                near white
+
+semantic_map:
+  0:  "none"
+  1:  "gt_only"
+  2:  "terrain_only"
+  3:  "gt+terrain"
+  4:  "semantic_only"
+  5:  "gt+semantic"
+  6:  "terrain+semantic"
+  7:  "gt+terrain+semantic"
+  8:  "model_only"
+  9:  "gt+model"
+  10: "terrain+model"
+  11: "gt+terrain+model"
+  12: "semantic+model"
+  13: "gt+semantic+model"
+  14: "terrain+semantic+model"
+  15: "all_agree"
