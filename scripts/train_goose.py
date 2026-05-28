@@ -26,7 +26,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
-from apairo import Goose3DDataset
+from apairo import Goose3DDataset  # noqa: F401 — apairo-style branch dependency
 from datasets.goose_trav import GooseTravTorchDataset, goose_trav_collate
 from src.losses import TRAV_LOSSES
 from src.models.sparse_trav_net import SparseTravNet
@@ -125,13 +125,6 @@ def train(cfg: dict) -> None:
         collate_fn=goose_trav_collate,
     )
 
-    # For terrain agreement: load trav_terrain at validation time
-    val_terrain_ds = Goose3DDataset(
-        Path(dc["root"]),
-        keys=["trav_terrain"],
-        split="val",
-    )
-
     print(f"Train: {len(train_ds)} scans / Val: {len(val_ds)} scans")
 
     mc = cfg["model"]
@@ -141,7 +134,11 @@ def train(cfg: dict) -> None:
     criterion = TRAV_LOSSES[lc["name"]](lc).to(device)
     print(f"Loss: {lc['name']}")
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=tc.get("lr", 1e-3))
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=tc.get("lr", 1e-3),
+        weight_decay=tc.get("weight_decay", 1e-4),
+    )
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=tc["epochs"], eta_min=1e-5
     )
@@ -203,9 +200,10 @@ def train(cfg: dict) -> None:
         terrain_agreements: list[float] = []
 
         with torch.no_grad():
-            for scan_idx, batch in enumerate(val_loader):
-                st     = batch["sparse_input"].to(device)
-                labels = batch["labels"].to(device)
+            for batch in val_loader:
+                st      = batch["sparse_input"].to(device)
+                labels  = batch["labels"].to(device)
+                terrain = batch["terrain_labels"]   # kept on CPU — only used for metric
                 if st.feats.shape[0] == 0:
                     continue
                 try:
@@ -217,16 +215,10 @@ def train(cfg: dict) -> None:
 
                 val_losses.append(loss.item())
                 val_m.update(logits, labels)
-
-                # Terrain agreement — per-voxel (approximate: uses raw trav_terrain)
-                if scan_idx < len(val_terrain_ds):
-                    terrain_raw = np.asarray(val_terrain_ds[scan_idx].data["trav_terrain"])
-                    if len(terrain_raw) == logits.shape[0]:
-                        terr = torch.from_numpy(terrain_raw > 0.5)
-                        terrain_agreements.append(terrain_agreement(logits.cpu(), terr))
+                terrain_agreements.append(terrain_agreement(logits.cpu(), terrain))
 
         vm = val_m.compute()
-        vm["loss"]             = float(np.mean(val_losses))
+        vm["loss"]              = float(np.mean(val_losses))
         vm["terrain_agreement"] = float(np.mean(terrain_agreements)) if terrain_agreements else 0.0
 
         for k, v in vm.items():

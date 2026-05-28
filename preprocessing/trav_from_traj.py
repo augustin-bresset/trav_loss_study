@@ -1,19 +1,19 @@
 """Trajectory-based traversability ground truth.
 
 For each scan, a point is labelled traversable (1) if it lies within the
-robot's 2-D footprint projected along any pose in a sliding temporal window
-and within the configured height band relative to the robot.
+robot's 2-D footprint projected along any **future** pose — i.e. positions
+the robot has not yet visited.
 
-This preprocessor is stateful: it must be called in scan order (0, 1, …, N-1)
-and requires the full pose sequence to be loaded in advance.
+At init, all trajectory positions are loaded into a forward-looking set.
+Each call to ``process()`` consumes (removes) the current pose so that only
+what is strictly ahead of the robot is considered traversable.  This prevents
+labelling obstacles behind the robot as traversable.
 
 Output channel: ``trav_gt``  (npys — one uint8 .npy per scan)
 
 Typical usage::
 
-    poses_ds = Goose3DDataset(split_dir, keys=["gicp_poses"])
-    poses = np.stack([poses_ds[i].data["gicp_poses"] for i in range(len(poses_ds))])
-
+    poses = np.stack([ds[i].data["gicp_poses"] for i in range(len(ds))])
     Goose3DDataset.run_preprocess(
         TravFromTraj(poses, robot_radius=0.75, height_min=-0.3, height_max=0.5),
         split_dir,
@@ -32,24 +32,29 @@ from apairo.core.sample import Sample
 
 
 class TravFromTraj(FramePreprocessor):
-    """Label each point traversable if it lies in the robot's swept footprint.
+    """Label each point traversable if it lies in the robot's forward footprint.
+
+    All trajectory positions are loaded at init.  At each processed frame the
+    current pose is consumed, so only strictly future positions are used to
+    build the traversability mask.
 
     Args:
-        poses:             (N, 4, 4) float64 world poses (T_world_sensor),
-                           one per scan — typically the output of GICPPoses.
-        robot_radius:      Half-width of the robot footprint in XY (metres).
-        height_min:        Minimum height of a point relative to the robot
-                           centre to be considered traversable (metres, ≤0).
-        height_max:        Maximum height relative to robot centre (metres, ≥0).
-        trajectory_window: Number of past and future scans used to build the
-                           trajectory window for each scan.
+        poses:          (N, 4, 4) float64 world poses (T_world_sensor),
+                        one per scan.
+        robot_radius:   Half-width of the robot footprint in XY (metres).
+        height_min:     Minimum point height relative to the nearest robot
+                        position to be traversable (metres, ≤ 0).
+        height_max:     Maximum point height relative to the nearest robot
+                        position (metres, ≥ 0).
+        forward_window: Maximum number of future poses to look ahead.
+                        ``None`` (default) uses the entire remaining trajectory.
     """
 
     output_key: ClassVar[str] = "trav_gt"
     output_loader: ClassVar[str] = "npys"
     input_keys: ClassVar[list[str]] = ["lidar"]
     timestamps_from: ClassVar[str] = "lidar"
-    sources: ClassVar[list[str]] = ["lidar", "gicp_poses"]
+    sources: ClassVar[list[str]] = ["lidar"]
 
     def __init__(
         self,
@@ -57,42 +62,43 @@ class TravFromTraj(FramePreprocessor):
         robot_radius: float = 0.75,
         height_min: float = -0.3,
         height_max: float = 0.5,
-        trajectory_window: int = 50,
+        forward_window: int | None = None,
     ) -> None:
         self._poses = np.asarray(poses, dtype=np.float64)  # (N, 4, 4)
         self._robot_radius = robot_radius
         self._height_min = height_min
         self._height_max = height_max
-        self._traj_window = trajectory_window
-        self._idx = 0
+        self._forward_window = forward_window
+        self._idx = 0  # index of the current (not yet consumed) pose
 
     def process(self, sample: Sample) -> np.ndarray:
         pc = np.asarray(sample.data["lidar"])
         xyz_sensor = pc[:, :3].astype(np.float64)
         N = len(xyz_sensor)
 
-        # Transform scan points to world frame
+        # Transform scan points to world frame using current pose
         T = self._poses[self._idx]
-        xyz_h = np.column_stack([xyz_sensor, np.ones(N)])  # (N, 4)
-        xyz_world = (T @ xyz_h.T).T[:, :3]  # (N, 3)
+        xyz_h = np.column_stack([xyz_sensor, np.ones(N)])
+        xyz_world = (T @ xyz_h.T).T[:, :3]
 
-        # Sliding window of trajectory poses
-        i_start = max(0, self._idx - self._traj_window)
-        i_end = min(len(self._poses), self._idx + self._traj_window + 1)
-        traj_pos = self._poses[i_start:i_end, :3, 3]  # (W, 3) — world-frame origins
+        # Consume current pose: forward set starts at idx+1
+        self._idx += 1
+        end = (
+            self._idx + self._forward_window
+            if self._forward_window is not None
+            else len(self._poses)
+        )
+        future_pos = self._poses[self._idx : end, :3, 3]  # (M, 3)
 
-        # For each point: distance to nearest trajectory position (XY only)
-        tree = KDTree(traj_pos[:, :2])
+        if len(future_pos) == 0:
+            return np.zeros(N, dtype=np.uint8)
+
+        tree = KDTree(future_pos[:, :2])
         dist_xy, nn_idx = tree.query(xyz_world[:, :2], k=1, workers=-1)
+        dz = xyz_world[:, 2] - future_pos[nn_idx, 2]
 
-        # Height relative to the nearest robot position
-        dz = xyz_world[:, 2] - traj_pos[nn_idx, 2]
-
-        trav = (
+        return (
             (dist_xy < self._robot_radius)
             & (dz >= self._height_min)
             & (dz <= self._height_max)
-        )
-
-        self._idx += 1
-        return trav.astype(np.uint8)
+        ).astype(np.uint8)

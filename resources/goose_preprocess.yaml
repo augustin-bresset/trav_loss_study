@@ -13,9 +13,9 @@ robot:
   height_min: -0.3  # lowest point relative to robot centre (metres)
   height_max:  0.5  # highest point (metres) — above = obstacle, not traversed
 
-# --- Trajectory window ---------------------------------------------------
+# --- Forward lookahead for trajectory-based labelling --------------------
 labeler:
-  trajectory_window: 50  # ± this many scans form the temporal window
+  forward_window: 200  # number of future poses to look ahead (null = entire trajectory)
 
 # --- Terrain-based traversability estimator ------------------------------
 terrain:

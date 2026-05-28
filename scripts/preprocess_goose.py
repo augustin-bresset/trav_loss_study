@@ -71,7 +71,7 @@ def run_split(split_dir: Path, cfg: dict, *, overwrite: bool, skip_gicp: bool) -
         robot_radius=cfg["robot"]["radius"],
         height_min=cfg["robot"]["height_min"],
         height_max=cfg["robot"]["height_max"],
-        trajectory_window=cfg["labeler"]["trajectory_window"],
+        forward_window=cfg["labeler"].get("forward_window"),
     )
     try:
         Goose3DDataset.run_preprocess(trav_traj, split_dir, overwrite=overwrite)

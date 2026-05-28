@@ -10,22 +10,32 @@ model:
   cr: 1.0                # channel-width multiplier (0.5 for lightweight run)
 
 training:
-  epochs: 10
+  epochs: 20
   batch_size: 4
   lr: 0.001
+  weight_decay: 0.0001  # AdamW regularisation
   num_workers: 4
   device: cuda
 
 loss:
-  name: bce              # bce | focal | upu | nnpu
+  name: nnpu             # bce | focal | upu | nnpu | tversky | lovasz | focal_nnpu | asl
 
-  # focal params (used when name: focal)
+  # focal / bce
   gamma: 2.0
   pos_weight: 5.0        # ~1/pos_ratio
 
-  # upu / nnpu params (used when name: upu or nnpu)
-  prior: 0.06            # estimated fraction of truly positive voxels
+  # upu / nnpu / focal_nnpu
+  prior: 0.30            # lower than 0.5 → better precision-recall balance (study1 result)
   beta: 0.0              # nnpu floor (default 0)
+
+  # tversky
+  tversky_alpha: 0.3     # FP weight
+  tversky_beta:  0.7     # FN weight
+
+  # asl
+  gamma_pos: 0.0
+  gamma_neg: 4.0
+  asl_clip:  0.05
 
 logging:
   log_dir: data/logs/trav/

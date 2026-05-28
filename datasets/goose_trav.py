@@ -69,7 +69,7 @@ class GooseTravTorchDataset(Dataset):
 
         self._ds = Goose3DDataset(
             Path(root_dir),
-            keys=["lidar", "trav_gt"],
+            keys=["lidar", "trav_gt", "trav_terrain"],
             split=split,
         )
 
@@ -97,12 +97,13 @@ class GooseTravTorchDataset(Dataset):
         sample = self._ds[self._valid[idx]]
         pc = np.asarray(sample.data["lidar"])
         labels = np.asarray(sample.data["trav_gt"]).astype(np.int32)
+        terrain = (np.asarray(sample.data["trav_terrain"]) > 0.5).astype(np.int32)
 
         xyz = pc[:, :3]
         intensity = pc[:, 3]
 
         mask = np.linalg.norm(xyz, axis=1) < self.max_rad
-        xyz, intensity, labels = xyz[mask], intensity[mask], labels[mask]
+        xyz, intensity, labels, terrain = xyz[mask], intensity[mask], labels[mask], terrain[mask]
 
         feats = np.column_stack([xyz, intensity])  # (N, 4)
 
@@ -114,10 +115,14 @@ class GooseTravTorchDataset(Dataset):
         labels_q = np.zeros(len(coords_q), dtype=np.int32)
         np.maximum.at(labels_q, inv, labels)
 
+        terrain_q = np.zeros(len(coords_q), dtype=np.int32)
+        np.maximum.at(terrain_q, inv, terrain)
+
         return {
-            "coords": torch.from_numpy(coords_q).int(),
-            "feats": torch.from_numpy(feats_q).float(),
-            "labels": torch.from_numpy(labels_q).long(),
+            "coords":          torch.from_numpy(coords_q).int(),
+            "feats":           torch.from_numpy(feats_q).float(),
+            "labels":          torch.from_numpy(labels_q).long(),
+            "terrain_labels":  torch.from_numpy(terrain_q).long(),
         }
 
 
@@ -132,7 +137,8 @@ def goose_trav_collate(batch: list) -> dict:
             coords=batched_coords,
             feats=torch.cat([b["feats"] for b in batch]),
         ),
-        "labels": torch.cat([b["labels"] for b in batch]),
+        "labels":         torch.cat([b["labels"]         for b in batch]),
+        "terrain_labels": torch.cat([b["terrain_labels"] for b in batch]),
     }
 
 

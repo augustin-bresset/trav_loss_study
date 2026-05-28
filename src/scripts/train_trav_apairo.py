@@ -119,7 +119,11 @@ def train(cfg: dict) -> None:
     print(f"Loss: {loss_name}  |  {criterion}")
 
     # ── optimizer ─────────────────────────────────────────────────────────────
-    optimizer = torch.optim.Adam(model.parameters(), lr=t_cfg.get("lr", 1e-3))
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=t_cfg.get("lr", 1e-3),
+        weight_decay=t_cfg.get("weight_decay", 1e-4),
+    )
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=t_cfg["epochs"], eta_min=1e-5
     )

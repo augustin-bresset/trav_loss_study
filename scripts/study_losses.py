@@ -2,14 +2,23 @@
 
 Each loss is trained for the same number of epochs.  Results are evaluated on:
   - Val F1 / precision / recall  (w.r.t. trajectory GT, ``trav_gt``)
-  - Terrain agreement            (fraction of predictions matching ``trav_terrain``)
+  - Terrain agreement            (fraction of voxels where model agrees with
+                                  ``trav_terrain`` — geometric prior, not GT)
 
 Results are saved to ``data/study_results.{json,csv}`` and printed as a table.
 
+Experiment grid is motivated by study_goose results (data/goose_study_results.json):
+  - BCE / focal / uPU had precision≈0.87 but recall≤0.23 (too conservative)
+  - nnPU (prior=0.5) had recall=1.0 (too aggressive, predicts everything positive)
+  → Group A: sweep nnPU prior downward to find the precision-recall sweet spot
+  → Group B: nnPU beta floor to stabilise gradient clamping
+  → Group C: push focal harder (gamma, pos_weight) to rescue recall
+  → Group D: new losses (Tversky, Lovász, FocalnnPU, ASL)
+
 Usage:
     python -m scripts.study_losses                              # all losses
-    python -m scripts.study_losses --losses bce nnpu           # subset
-    python -m scripts.study_losses --config resources/train_goose.yaml
+    python -m scripts.study_losses --losses bce nnpu_prior30   # subset
+    python -m scripts.study_losses --config resources/train_goose_trav.yaml
     python -m scripts.study_losses --dry-run
 """
 
@@ -25,6 +34,7 @@ from pathlib import Path
 import yaml
 
 EXPERIMENTS: list[dict] = [
+    # ── Baselines (study 1 reference) ────────────────────────────────────────
     {
         "name": "bce",
         "overrides": {"loss.name": "bce"},
@@ -33,13 +43,98 @@ EXPERIMENTS: list[dict] = [
         "name": "focal",
         "overrides": {"loss.name": "focal", "loss.gamma": 2.0, "loss.pos_weight": 3.6},
     },
+    # ── Group A: nnPU prior sweep ─────────────────────────────────────────────
+    # study 1: nnPU(prior=0.5) → recall=1.0, model predicts everything positive
+    # → lower prior reduces pressure toward positive, improves precision
     {
-        "name": "upu",
-        "overrides": {"loss.name": "upu", "loss.prior": 0.50},
+        "name": "nnpu_prior20",
+        "overrides": {"loss.name": "nnpu", "loss.prior": 0.20, "loss.beta": 0.0},
     },
     {
-        "name": "nnpu",
-        "overrides": {"loss.name": "nnpu", "loss.prior": 0.50, "loss.beta": 0.0},
+        "name": "nnpu_prior30",
+        "overrides": {"loss.name": "nnpu", "loss.prior": 0.30, "loss.beta": 0.0},
+    },
+    {
+        "name": "nnpu_prior40",
+        "overrides": {"loss.name": "nnpu", "loss.prior": 0.40, "loss.beta": 0.0},
+    },
+    # ── Group B: nnPU beta floor sweep (prior fixed at 0.5) ───────────────────
+    # beta > 0 clamps the neg-risk floor → gradient cut-off is less aggressive
+    {
+        "name": "nnpu_beta01",
+        "overrides": {"loss.name": "nnpu", "loss.prior": 0.50, "loss.beta": 0.01},
+    },
+    {
+        "name": "nnpu_beta05",
+        "overrides": {"loss.name": "nnpu", "loss.prior": 0.50, "loss.beta": 0.05},
+    },
+    # best-guess combined: lower prior + small floor
+    {
+        "name": "nnpu_p30_b02",
+        "overrides": {"loss.name": "nnpu", "loss.prior": 0.30, "loss.beta": 0.02},
+    },
+    # ── Group C: focal parameter sweep ───────────────────────────────────────
+    # study 1: focal(gamma=2, pw=3.6) → recall=0.21 still too low
+    # → push gamma and pos_weight harder to force recall up
+    {
+        "name": "focal_g3_pw6",
+        "overrides": {"loss.name": "focal", "loss.gamma": 3.0, "loss.pos_weight": 6.0},
+    },
+    {
+        "name": "focal_g5_pw8",
+        "overrides": {"loss.name": "focal", "loss.gamma": 5.0, "loss.pos_weight": 8.0},
+    },
+    {
+        "name": "bce_pw6",
+        "overrides": {"loss.name": "bce", "loss.pos_weight": 6.0},
+    },
+    # ── Group D: new losses ───────────────────────────────────────────────────
+    {
+        "name": "tversky_a03",
+        "overrides": {
+            "loss.name": "tversky",
+            "loss.tversky_alpha": 0.3,
+            "loss.tversky_beta": 0.7,
+        },
+    },
+    {
+        "name": "tversky_a02",
+        "overrides": {
+            "loss.name": "tversky",
+            "loss.tversky_alpha": 0.2,
+            "loss.tversky_beta": 0.8,
+        },
+    },
+    {
+        "name": "lovasz",
+        "overrides": {"loss.name": "lovasz"},
+    },
+    {
+        "name": "focal_nnpu_p30",
+        "overrides": {
+            "loss.name": "focal_nnpu",
+            "loss.prior": 0.30,
+            "loss.gamma": 2.0,
+            "loss.beta": 0.0,
+        },
+    },
+    {
+        "name": "focal_nnpu_p40",
+        "overrides": {
+            "loss.name": "focal_nnpu",
+            "loss.prior": 0.40,
+            "loss.gamma": 2.0,
+            "loss.beta": 0.0,
+        },
+    },
+    {
+        "name": "asl",
+        "overrides": {
+            "loss.name": "asl",
+            "loss.gamma_pos": 0.0,
+            "loss.gamma_neg": 4.0,
+            "loss.asl_clip": 0.05,
+        },
     },
 ]
 
@@ -84,7 +179,7 @@ def summarise(scalars: dict[str, list[float]]) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config",  default="resources/train_goose.yaml")
+    parser.add_argument("--config",  default="resources/train_goose_trav.yaml")
     parser.add_argument("--losses",  nargs="+", help="Subset of loss names to run")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
@@ -147,17 +242,25 @@ def main() -> None:
         w.writeheader()
         w.writerows(records)
 
-    # ── summary table ─────────────────────────────────────────────────────────
-    print(f"\n{'='*72}")
+    # ── summary table (sorted by best_val_f1 desc) ───────────────────────────
+    def fmt(v): return f"{v:.4f}" if isinstance(v, float) else "  N/A"
+    sorted_records = sorted(
+        [r for r in records if r.get("best_val_f1") is not None],
+        key=lambda r: r["best_val_f1"],
+        reverse=True,
+    ) + [r for r in records if r.get("best_val_f1") is None]
+
+    W = max(len(r["loss"]) for r in records)
+    print(f"\n{'='*80}")
     print("  STUDY SUMMARY")
-    print(f"{'='*72}")
-    print(f"{'Loss':<8}  {'Val F1':>7}  {'Precision':>9}  {'Recall':>7}  {'Terrain↑':>9}  Status")
-    print("-" * 72)
-    for r in records:
-        def fmt(v): return f"{v:.4f}" if isinstance(v, float) else "N/A"
+    print(f"{'='*80}")
+    print(f"{'Loss':<{W}}  {'Val F1':>7}  {'Prec':>7}  {'Recall':>7}  {'Terrain↑':>9}  Status")
+    print("-" * 80)
+    for r in sorted_records:
         print(
-            f"{r['loss']:<8}  {fmt(r.get('best_val_f1')):>7}  "
-            f"{fmt(r.get('best_val_precision')):>9}  "
+            f"{r['loss']:<{W}}  "
+            f"{fmt(r.get('best_val_f1')):>7}  "
+            f"{fmt(r.get('best_val_precision')):>7}  "
             f"{fmt(r.get('best_val_recall')):>7}  "
             f"{fmt(r.get('best_terrain_agreement')):>9}  "
             f"{r['status']}"
