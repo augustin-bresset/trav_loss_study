@@ -1,0 +1,7 @@
+README.md
+pyproject.toml
+trav_loss.egg-info/PKG-INFO
+trav_loss.egg-info/SOURCES.txt
+trav_loss.egg-info/dependency_links.txt
+trav_loss.egg-info/requires.txt
+trav_loss.egg-info/top_level.txt

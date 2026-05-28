@@ -63,6 +63,7 @@ class TravFromTraj(FramePreprocessor):
         height_min: float = -0.3,
         height_max: float = 0.5,
         forward_window: int | None = None,
+        sequence_gap: float = 5.0,
     ) -> None:
         self._poses = np.asarray(poses, dtype=np.float64)  # (N, 4, 4)
         self._robot_radius = robot_radius
@@ -70,6 +71,15 @@ class TravFromTraj(FramePreprocessor):
         self._height_max = height_max
         self._forward_window = forward_window
         self._idx = 0  # index of the current (not yet consumed) pose
+
+        # Precompute the last-frame index of the sequence each frame belongs to.
+        # A boundary is declared when consecutive pose origins are > sequence_gap m apart.
+        positions = self._poses[:, :3, 3]
+        dists = np.linalg.norm(np.diff(positions, axis=0), axis=1)  # (N-1,)
+        boundaries = np.where(dists > sequence_gap)[0]  # last frame index before each jump
+        ends = np.concatenate([boundaries, [len(self._poses) - 1]])
+        # For frame i, _seq_end[i] = index of the last frame in the same sequence
+        self._seq_end = ends[np.searchsorted(ends, np.arange(len(self._poses)))]
 
     def process(self, sample: Sample) -> np.ndarray:
         pc = np.asarray(sample.data["lidar"])
@@ -83,10 +93,10 @@ class TravFromTraj(FramePreprocessor):
 
         # Consume current pose: forward set starts at idx+1
         self._idx += 1
-        end = (
-            self._idx + self._forward_window
-            if self._forward_window is not None
-            else len(self._poses)
+        seq_end = int(self._seq_end[self._idx - 1]) + 1  # exclusive, capped at sequence boundary
+        end = min(
+            self._idx + self._forward_window if self._forward_window is not None else seq_end,
+            seq_end,
         )
         future_pos = self._poses[self._idx : end, :3, 3]  # (M, 3)
 

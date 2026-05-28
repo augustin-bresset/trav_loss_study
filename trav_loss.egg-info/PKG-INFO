@@ -1,0 +1,17 @@
+Metadata-Version: 2.4
+Name: trav_loss
+Version: 0.1.0
+Summary: Trav loss environment
+Requires-Python: >=3.10
+Requires-Dist: torch
+Requires-Dist: torchvision
+Requires-Dist: torchaudio
+Requires-Dist: open3d
+Requires-Dist: torch-geometric
+Requires-Dist: pandas
+Requires-Dist: scipy
+Requires-Dist: tensorboard
+Requires-Dist: torchsparse
+Provides-Extra: dev
+Requires-Dist: apairo; extra == "dev"
+Requires-Dist: apairo-visu; extra == "dev"

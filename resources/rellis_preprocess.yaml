@@ -1,6 +1,5 @@
 data:
-  vault_root:  /mnt/vault-fellowship/rellis        # read-only vault (source data)
-  output_root: /home/abresset/data/rellis_derived  # local writable root for derived files
+  root: /home/abresset/data/rellis
 
 # RELLIS semantic IDs treated as traversable
 traversable_ids:
@@ -13,10 +12,10 @@ traversable_ids:
 
 # Robot footprint for trajectory-based GT labelling
 robot:
-  radius:     0.75   # half-width in XY (metres)
-  height_min: -0.3   # lowest point relative to robot centre (metres)
+  radius:     1.0   # half-width in XY (metres)
+  height_min: -5.0   # lowest point relative to robot centre (metres)
   height_max:  0.5   # highest point (metres)
 
 # Forward lookahead for trajectory-based labelling
 labeler:
-  forward_window: 400   # number of future poses to look ahead (null = entire trajectory)
+  forward_window:   # number of future poses to look ahead (null = entire trajectory)

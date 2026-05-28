@@ -1,0 +1,15 @@
+Metadata-Version: 2.4
+Name: trav_loss
+Version: 0.1.0
+Requires-Python: >=3.10
+Requires-Dist: torch
+Requires-Dist: torchvision
+Requires-Dist: torchaudio
+Requires-Dist: open3d
+Requires-Dist: torch-geometric
+Requires-Dist: pandas
+Requires-Dist: scipy
+Requires-Dist: tensorboard
+Requires-Dist: apairo @ file:///home/abresset/dev/apairo
+Requires-Dist: apairo-visu @ file:///home/abresset/dev/apairo_visu
+Requires-Dist: torchsparse @ file:///home/abresset/dev/torchsparse

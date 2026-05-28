@@ -1,0 +1,13 @@
+torch
+torchvision
+torchaudio
+open3d
+torch-geometric
+pandas
+scipy
+tensorboard
+torchsparse
+
+[dev]
+apairo
+apairo-visu
