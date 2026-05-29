@@ -3,7 +3,7 @@
 Launches ``apairo_visu.LidarViewer`` with a composite label that encodes:
 
   bit 0  (value +1)  trav_gt       — trajectory-based ground truth (green)
-  bit 1  (value +2)  trav_terrain  — terrain-estimate (blue)
+  bit 1  (value +2)  semantic trav  — GOOSE semantic-based (blue)
   bit 2  (value +4)  semantic trav — GOOSE classes mapped to traversable (purple)
 
 Combined label in [0, 7]:

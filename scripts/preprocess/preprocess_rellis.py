@@ -1,18 +1,18 @@
 """Preprocess RELLIS-3D for traversability training.
 
 Pipeline:
-  1. TravFromLabels — semantic label → binary traversable  (trav_label, uint8/pt)
-  2. TravFromTraj   — robot trajectory footprint → trav_gt (uint8/pt)
+  1. TraversabilityFromLabels   — semantic label → binary traversable  (trav_label)
+  2. TraversabilityFromTrajectory — robot trajectory footprint → trav_gt
 
 Both steps delegate to ``Rellis3DDataset.run_preprocess()``, which handles file
 placement via ``derived_path()``, format-specific writing, and channel
 registration in ``.apairo``.
 
 Usage:
-    python scripts/preprocess_rellis.py --config resources/rellis_preprocess.yaml
-    python scripts/preprocess_rellis.py --config resources/rellis_preprocess.yaml --overwrite
-    python scripts/preprocess_rellis.py --config resources/rellis_preprocess.yaml --skip-traj
-    python scripts/preprocess_rellis.py --config resources/rellis_preprocess.yaml --skip-labels
+    python -m scripts.preprocess.preprocess_rellis --config resources/rellis_preprocess.yaml
+    python -m scripts.preprocess.preprocess_rellis --config resources/rellis_preprocess.yaml --overwrite
+    python -m scripts.preprocess.preprocess_rellis --config resources/rellis_preprocess.yaml --skip-traj
+    python -m scripts.preprocess.preprocess_rellis --config resources/rellis_preprocess.yaml --skip-labels
 """
 
 from __future__ import annotations
@@ -25,10 +25,10 @@ from pathlib import Path
 import numpy as np
 import yaml
 
-sys.path.insert(0, str(Path(__file__).parents[1]))
+sys.path.insert(0, str(Path(__file__).parents[2]))
 
 from apairo import Rellis3DDataset
-from apairo_preprocess import TravFromLabels, TravFromTraj
+from apairo_preprocess import TraversabilityFromLabels, TraversabilityFromTrajectory
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
 log = logging.getLogger(__name__)
@@ -46,10 +46,10 @@ def _3x4_to_4x4(T34: np.ndarray) -> np.ndarray:
 
 
 def run_trav_labels(root: Path, trav_ids: frozenset[int], overwrite: bool) -> None:
-    log.info("=== TravFromLabels ===")
+    log.info("=== TraversabilityFromLabels ===")
     try:
         Rellis3DDataset.run_preprocess(
-            TravFromLabels(trav_ids),
+            TraversabilityFromLabels(trav_ids),
             root,
             overwrite=overwrite,
         )
@@ -58,7 +58,7 @@ def run_trav_labels(root: Path, trav_ids: frozenset[int], overwrite: bool) -> No
 
 
 def run_trav_traj(root: Path, cfg: dict, overwrite: bool) -> None:
-    log.info("=== TravFromTraj ===")
+    log.info("=== TraversabilityFromTrajectory ===")
 
     ds = Rellis3DDataset(root, keys=["poses"])
     poses = np.stack([_3x4_to_4x4(ds[i].data["poses"]) for i in range(len(ds))])
@@ -66,7 +66,7 @@ def run_trav_traj(root: Path, cfg: dict, overwrite: bool) -> None:
 
     try:
         Rellis3DDataset.run_preprocess(
-            TravFromTraj(
+            TraversabilityFromTrajectory(
                 poses=poses,
                 robot_radius=cfg["robot"]["radius"],
                 height_min=cfg["robot"]["height_min"],
@@ -87,13 +87,13 @@ def main() -> None:
     parser.add_argument("--config", default="resources/rellis_preprocess.yaml")
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--skip-labels", action="store_true",
-                        help="Skip TravFromLabels (trav_label).")
+                        help="Skip TraversabilityFromLabels (trav_label).")
     parser.add_argument("--skip-traj", action="store_true",
-                        help="Skip TravFromTraj (trav_gt).")
+                        help="Skip TraversabilityFromTrajectory (trav_gt).")
     args = parser.parse_args()
 
-    cfg  = load_cfg(args.config)
-    root = Path(cfg["data"]["root"])
+    cfg      = load_cfg(args.config)
+    root     = Path(cfg["data"]["root"])
     trav_ids = frozenset(cfg.get("traversable_ids", [1, 3, 10, 23, 31, 33]))
 
     log.info("Root: %s", root)

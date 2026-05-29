@@ -17,12 +17,26 @@ Dataset key layout (all training datasets)::
     coords       int32  (N, 3)   quantized voxel coordinates
     feats        float  (N, 4)   [x, y, z, intensity]
     labels       long   (N,)     primary GT  (trav_gt)
-    alt_labels   long   (N,)     secondary metric
-                                   GOOSE  → trav_terrain (terrain estimate)
-                                   Rellis → trav_label   (semantic-based)
+    alt_labels   long   (N,)     secondary metric — Rellis: trav_label (semantic-based)
 
 Composite (visualisation) datasets return apairo ``Sample`` objects with a
 ``trav_composite`` channel encoding method agreement as bit flags.
+
+Splits
+------
+GOOSE has a built-in train/val/test split (directory-based, handled by apairo).
+
+RELLIS has no built-in split.  Use ``apairo.split_sequences`` on
+``dataset.sequence_ids`` to get train/val sequence ID lists, then pass them
+to ``RellisTorchDataset(root, sequence_ids=...)``.
+
+Example::
+
+    from apairo import Rellis3DDataset, split_sequences
+    seq_ids = Rellis3DDataset(root, keys=["lidar"]).sequence_ids
+    train_ids, val_ids, _ = split_sequences(seq_ids, ratios=(0.8, 0.2, 0.0))
+    train_ds = RellisTorchDataset(root, sequence_ids=train_ids)
+    val_ds   = RellisTorchDataset(root, sequence_ids=val_ids)
 """
 
 from __future__ import annotations
@@ -47,7 +61,7 @@ from apairo.core.sample import Sample
 def sparse_collate(batch: list) -> dict:
     """Collate training items into a batched SparseTensor.
 
-    Works with any dataset that returns ``{coords, feats, labels, [alt_labels]}``.
+    Works with any dataset returning ``{coords, feats, labels, [alt_labels]}``.
     """
     batched_coords = torch.cat([
         torch.cat([torch.full((len(b["coords"]), 1), i, dtype=torch.int), b["coords"]], dim=1)
@@ -73,30 +87,38 @@ def sparse_collate(batch: list) -> dict:
 def _voxelize(
     pc: np.ndarray,
     labels: np.ndarray,
-    alt: np.ndarray,
     voxel_size: float,
     max_rad: float,
+    alt: np.ndarray | None = None,
 ) -> dict:
     xyz, intensity = pc[:, :3], pc[:, 3]
 
     mask = np.linalg.norm(xyz, axis=1) < max_rad
-    xyz, intensity, labels, alt = xyz[mask], intensity[mask], labels[mask], alt[mask]
+    xyz       = xyz[mask]
+    intensity = intensity[mask]
+    labels    = labels[mask]
+    if alt is not None:
+        alt = alt[mask]
 
     feats    = np.column_stack([xyz, intensity])
     coords_q = np.floor(xyz / voxel_size).astype(np.int32)
     coords_q, sel, inv = sparse_quantize(coords_q, return_index=True, return_inverse=True)
 
     labels_q = np.zeros(len(coords_q), dtype=np.int32)
-    alt_q    = np.zeros(len(coords_q), dtype=np.int32)
     np.maximum.at(labels_q, inv, labels)
-    np.maximum.at(alt_q,    inv, alt)
 
-    return {
-        "coords":     torch.from_numpy(coords_q).int(),
-        "feats":      torch.from_numpy(feats[sel]).float(),
-        "labels":     torch.from_numpy(labels_q).long(),
-        "alt_labels": torch.from_numpy(alt_q).long(),
+    item = {
+        "coords": torch.from_numpy(coords_q).int(),
+        "feats":  torch.from_numpy(feats[sel]).float(),
+        "labels": torch.from_numpy(labels_q).long(),
     }
+
+    if alt is not None:
+        alt_q = np.zeros(len(coords_q), dtype=np.int32)
+        np.maximum.at(alt_q, inv, alt)
+        item["alt_labels"] = torch.from_numpy(alt_q).long()
+
+    return item
 
 
 # ---------------------------------------------------------------------------
@@ -109,11 +131,10 @@ class GooseTorchDataset(Dataset, Goose3DDataset):
 
     Inherits file discovery from ``Goose3DDataset``.
     Primary label: ``trav_gt`` (trajectory footprint).
-    Secondary label: ``trav_terrain`` (terrain-height estimate).
 
     Args:
         root_dir:   GOOSE root directory.
-        split:      ``"train"`` or ``"val"``.
+        split:      ``"train"``, ``"val"``, or ``"test"``.
         voxel_size: Voxel quantization cell size in metres.
         max_rad:    Range filter in metres.
         min_pos:    Minimum positive voxels required to keep a scan.
@@ -130,7 +151,7 @@ class GooseTorchDataset(Dataset, Goose3DDataset):
         Goose3DDataset.__init__(
             self,
             root_dir=Path(root_dir),
-            keys=["lidar", "trav_gt", "trav_terrain"],
+            keys=["lidar", "trav_gt"],
             split=split,
         )
         self.voxel_size = voxel_size
@@ -160,7 +181,6 @@ class GooseTorchDataset(Dataset, Goose3DDataset):
         return _voxelize(
             pc=np.asarray(sample.data["lidar"]),
             labels=np.asarray(sample.data["trav_gt"]).astype(np.int32),
-            alt=(np.asarray(sample.data["trav_terrain"]) > 0.5).astype(np.int32),
             voxel_size=self.voxel_size,
             max_rad=self.max_rad,
         )
@@ -179,15 +199,13 @@ class GooseCompositeDataset(Dataset, Goose3DDataset):
     Label encoding::
 
         bit 0 (1): trav_gt       — trajectory GT      → green
-        bit 1 (2): trav_terrain  — terrain estimate   → blue
-        bit 2 (4): GOOSE semantic traversable         → (optional)
+        bit 1 (2): GOOSE semantic traversable         → blue  (optional)
 
     Args:
-        root_dir:          GOOSE root directory.
-        split:             ``"train"`` or ``"val"``.
-        terrain_threshold: Binarisation threshold for ``trav_terrain``.
-        traversable_ids:   GOOSE semantic class IDs considered traversable.
-        with_semantic:     Include semantic bit.
+        root_dir:        GOOSE root directory.
+        split:           ``"train"``, ``"val"``, or ``"test"``.
+        traversable_ids: GOOSE semantic class IDs considered traversable.
+        with_semantic:   Include semantic bit.
     """
 
     _DEFAULT_TRAV_IDS = {23, 31, 50, 51}  # asphalt, soil, low/high grass
@@ -196,15 +214,13 @@ class GooseCompositeDataset(Dataset, Goose3DDataset):
         self,
         root_dir: str | Path,
         split: str = "val",
-        terrain_threshold: float = 0.5,
         traversable_ids: set[int] | None = None,
         with_semantic: bool = True,
     ) -> None:
-        self._threshold     = terrain_threshold
         self._trav_ids      = traversable_ids or self._DEFAULT_TRAV_IDS
         self._with_semantic = with_semantic
 
-        keys = ["lidar", "trav_gt", "trav_terrain"]
+        keys = ["lidar", "trav_gt"]
         if with_semantic:
             keys.append("labels")
 
@@ -214,19 +230,18 @@ class GooseCompositeDataset(Dataset, Goose3DDataset):
         return Goose3DDataset.__len__(self)
 
     def __getitem__(self, idx: int) -> Sample:
-        raw          = Goose3DDataset.__getitem__(self, idx)
-        trav_gt      = np.asarray(raw.data["trav_gt"]).astype(np.int32)
-        trav_terrain = (np.asarray(raw.data["trav_terrain"]) > self._threshold).astype(np.int32)
+        raw     = Goose3DDataset.__getitem__(self, idx)
+        trav_gt = np.asarray(raw.data["trav_gt"]).astype(np.int32)
 
-        combined = trav_gt | (trav_terrain << 1)
+        combined = trav_gt.copy()
 
         if self._with_semantic and "labels" in raw.data:
             sem_trav  = np.isin(np.asarray(raw.data["labels"]), list(self._trav_ids)).astype(np.int32)
-            combined |= sem_trav << 2
+            combined |= sem_trav << 1
 
         return Sample(data={
             "lidar":          raw.data["lidar"],
-            "trav_composite": combined.astype(np.int32),
+            "trav_composite": combined,
         })
 
 
@@ -238,26 +253,27 @@ class GooseCompositeDataset(Dataset, Goose3DDataset):
 class RellisTorchDataset(Dataset, Rellis3DDataset):
     """Per-scan RELLIS-3D traversability dataset for sparse-conv training.
 
-    Inherits file discovery from ``Rellis3DDataset``.
+    Inherits file discovery and ``sequence_ids`` / ``sequence()`` API from
+    ``Rellis3DDataset``.
     Primary label: ``trav_gt`` (trajectory footprint).
-    Secondary label: ``trav_label`` (semantic-based estimate).
+    Secondary label: ``trav_label`` (semantic-based estimate) → ``alt_labels``.
 
-    Rellis-3D has no built-in train/val split; pass ``sequences`` to select
-    which numbered sequences to include (e.g. ``[0, 1, 2]`` for train,
-    ``[3, 4]`` for val).
+    Rellis-3D has no built-in train/val split.  Use ``apairo.split_sequences``
+    on ``dataset.sequence_ids`` to get the ID lists, then pass them here.
 
     Args:
-        root_dir:   RELLIS root directory (parent of ``Rellis-3D/``).
-        sequences:  Sequence indices to include.  ``None`` loads all.
-        voxel_size: Voxel quantization cell size in metres.
-        max_rad:    Range filter in metres.
-        min_pos:    Minimum positive voxels required to keep a scan.
+        root_dir:     RELLIS root directory (parent of ``Rellis-3D/``).
+        sequence_ids: Sequence IDs to include (e.g. ``["00000", "00001"]``).
+                      ``None`` loads all sequences.
+        voxel_size:   Voxel quantization cell size in metres.
+        max_rad:      Range filter in metres.
+        min_pos:      Minimum positive voxels required to keep a scan.
     """
 
     def __init__(
         self,
         root_dir: str | Path,
-        sequences: list[int] | None = None,
+        sequence_ids: list[str] | None = None,
         voxel_size: float = 0.1,
         max_rad: float = 50.0,
         min_pos: int = 1,
@@ -270,36 +286,27 @@ class RellisTorchDataset(Dataset, Rellis3DDataset):
         self.voxel_size = voxel_size
         self.max_rad    = max_rad
 
-        n_total = Rellis3DDataset.__len__(self)
+        if sequence_ids is None:
+            sequence_ids = self.sequence_ids
+
         valid, n_skip = [], 0
-        for i in range(n_total):
-            if sequences is not None:
-                seq_idx = self._sequence_index(i)
-                if seq_idx not in sequences:
+        for sid in sequence_ids:
+            seq = self.sequence(sid)
+            for local_idx in range(len(seq)):
+                global_idx = seq._indices[local_idx]
+                if min_pos <= 0:
+                    valid.append(global_idx)
                     continue
-            if min_pos <= 0:
-                valid.append(i)
-                continue
-            labels = Rellis3DDataset.__getitem__(self, i).data["trav_gt"]
-            if int((np.asarray(labels) == 1).sum()) >= min_pos:
-                valid.append(i)
-            else:
-                n_skip += 1
+                labels = Rellis3DDataset.__getitem__(self, global_idx).data["trav_gt"]
+                if int((np.asarray(labels) == 1).sum()) >= min_pos:
+                    valid.append(global_idx)
+                else:
+                    n_skip += 1
 
         if n_skip:
             print(f"[RellisTorchDataset]: skipped {n_skip} scans (< {min_pos} positive)")
         print(f"[RellisTorchDataset]: {len(valid)} scans")
         self._valid = valid
-
-    def _sequence_index(self, frame_idx: int) -> int:
-        """Return the sequence number for a given global frame index."""
-        ref_key = self._ref_key
-        path = self._files[ref_key][frame_idx]
-        parts = path.relative_to(self._root).parts
-        for part in parts:
-            if part.isdigit():
-                return int(part)
-        return 0
 
     def __len__(self) -> int:
         return len(self._valid)
@@ -309,9 +316,9 @@ class RellisTorchDataset(Dataset, Rellis3DDataset):
         return _voxelize(
             pc=np.asarray(sample.data["lidar"]),
             labels=np.asarray(sample.data["trav_gt"]).astype(np.int32),
-            alt=np.asarray(sample.data["trav_label"]).astype(np.int32),
             voxel_size=self.voxel_size,
             max_rad=self.max_rad,
+            alt=np.asarray(sample.data["trav_label"]).astype(np.int32),
         )
 
 
