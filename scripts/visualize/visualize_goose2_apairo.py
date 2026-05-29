@@ -62,7 +62,7 @@ sys.path.insert(0, str(_ROOT.parent / "apairo_visu"))
 
 import apairo_visu
 from apairo_visu import LidarViewer, ViewConfig, Pipeline
-from datasets.goose_trav import GooseTravCompositeDataset
+from src.datasets import GooseCompositeDataset
 from src.losses import TRAV_LOSSES          # noqa: F401 — ensures losses registered
 from src.models.sparse_trav_net import SparseTravNet
 
@@ -220,7 +220,7 @@ def main() -> None:
 
     # ── dataset ──────────────────────────────────────────────────────────────
     print(f"\nLoading dataset  {args.root}  split={args.split} …")
-    dataset = GooseTravCompositeDataset(
+    dataset = GooseCompositeDataset(
         root_dir=args.root,
         split=args.split,
         terrain_threshold=args.threshold,

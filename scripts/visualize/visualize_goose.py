@@ -41,7 +41,7 @@ sys.path.insert(0, str(Path(__file__).parents[1]))
 import apairo_visu
 from apairo_visu import LidarViewer, ViewConfig
 from apairo.core.sample import Sample
-from datasets.goose_trav import GooseTravCompositeDataset
+from src.datasets import GooseCompositeDataset
 
 
 # ---------------------------------------------------------------------------
@@ -50,7 +50,7 @@ from datasets.goose_trav import GooseTravCompositeDataset
 
 
 def _add_model_predictions(
-    composite_ds: GooseTravCompositeDataset,
+    composite_ds: GooseCompositeDataset,
     checkpoint: Path,
     device: str = "cpu",
 ) -> "ModelOverlayDataset":
@@ -65,7 +65,7 @@ def _add_model_predictions(
 
 
 class ModelOverlayDataset:
-    """Wrap GooseTravCompositeDataset to add model prediction bit (bit 3)."""
+    """Wrap GooseCompositeDataset to add model prediction bit (bit 3)."""
 
     VOXEL_SIZE = 0.1
     MAX_RAD    = 50.0
@@ -182,7 +182,7 @@ def main() -> None:
     parser.add_argument("--device",     default="cpu")
     args = parser.parse_args()
 
-    dataset = GooseTravCompositeDataset(
+    dataset = GooseCompositeDataset(
         root_dir=args.root,
         split=args.split,
         with_semantic=not args.no_semantic,

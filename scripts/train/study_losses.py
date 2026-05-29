@@ -171,7 +171,7 @@ def summarise(scalars: dict[str, list[float]]) -> dict:
         "best_val_precision":      _best("val/precision",           max),
         "best_val_recall":         _best("val/recall",              max),
         "best_val_loss":           _best("val/loss",                min),
-        "best_terrain_agreement":  _best("val/terrain_agreement",   max),
+        "best_alt_agreement":  _best("val/alt_agreement",   max),
         "final_train_loss":        (scalars.get("train/loss") or [None])[-1],
         "n_epochs":                len(scalars.get("val/f1") or []),
     }
@@ -223,7 +223,7 @@ def main() -> None:
         def _fmt(v): return f"{v:.4f}" if isinstance(v, float) else "N/A"
         print(
             f"  → f1={_fmt(summary['best_val_f1'])}"
-            f"  terrain={_fmt(summary['best_terrain_agreement'])}"
+            f"  terrain={_fmt(summary['best_alt_agreement'])}"
             f"  status={status}"
         )
 
@@ -234,7 +234,7 @@ def main() -> None:
     fields = [
         "loss", "status",
         "best_val_f1", "best_val_precision", "best_val_recall",
-        "best_val_loss", "best_terrain_agreement",
+        "best_val_loss", "best_alt_agreement",
         "final_train_loss", "n_epochs", "overrides",
     ]
     with open(results_csv, "w", newline="") as f:
@@ -262,7 +262,7 @@ def main() -> None:
             f"{fmt(r.get('best_val_f1')):>7}  "
             f"{fmt(r.get('best_val_precision')):>7}  "
             f"{fmt(r.get('best_val_recall')):>7}  "
-            f"{fmt(r.get('best_terrain_agreement')):>9}  "
+            f"{fmt(r.get('best_alt_agreement')):>9}  "
             f"{r['status']}"
         )
     print(f"\nSaved → {results_json}  /  {results_csv}")

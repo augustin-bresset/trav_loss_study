@@ -15,10 +15,9 @@ dependencies = [
     "scipy",
     "tensorboard",
     
-
-    "torchsparse @ file:///home/abresset/dev/torchsparse",	
-    "apairo @ file:///home/abresset/dev/apairo",
-    "apairo-visu @ file:///home/abresset/dev/apairo_visu",
-    "apairo-preprocess @ file:///home/abresset/dev/apairo_preprocess",
+    "torchsparse @ git+https://github.com/augustin-bresset/torchsparse.git",
+    "apairo @ git+https://github.com/apairo-robotics/apairo.git",
+    "apairo-visu @ git+https://github.com/apairo-robotics/apairo_visu.git",
+    "apairo-preprocess @ git+https://github.com/apairo-robotics/apairo_preprocess.git",
     
 ]
