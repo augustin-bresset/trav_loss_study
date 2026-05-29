@@ -28,7 +28,7 @@ import yaml
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
 from apairo import Rellis3DDataset
-from preprocessing import TravFromLabels, TravFromTraj
+from apairo_preprocess import TravFromLabels, TravFromTraj
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
 log = logging.getLogger(__name__)

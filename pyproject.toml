@@ -11,14 +11,14 @@ dependencies = [
     "torch",
     "torchvision",
     "torchaudio",
-    "open3d",
-    "torch-geometric",
     "pandas",
     "scipy",
     "tensorboard",
     
 
+    "torchsparse @ file:///home/abresset/dev/torchsparse",	
     "apairo @ file:///home/abresset/dev/apairo",
     "apairo-visu @ file:///home/abresset/dev/apairo_visu",
-    "torchsparse @ file:///home/abresset/dev/torchsparse",	
+    "apairo-preprocess @ file:///home/abresset/dev/apairo_preprocess",
+    
 ]

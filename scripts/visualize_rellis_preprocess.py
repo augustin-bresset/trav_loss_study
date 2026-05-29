@@ -9,7 +9,7 @@ Viewports:
   · Traj GT       — TravFromTraj output only (green / gray)
   · Sem Label     — TravFromLabels output only (blue / gray)
 
-Composite encoding (reuses trav_composite_label_cfg.yaml, values 0–3):
+Composite encoding (reuses trav_composite_label_cfg.yaml, values 0--3):
   bit 0 (+1) : trav_gt    — trajectory ground truth  →  green
   bit 1 (+2) : trav_label — semantic-based label     →  blue
   both (3)               — full agreement            →  yellow
@@ -49,7 +49,7 @@ class RellisTravCompositeDataset:
     """Wraps Rellis3DDataset to expose a merged trav label for apairo_visu.
 
     Combines trav_gt (trajectory GT, bit 0) and trav_label (semantic-based,
-    bit 1) into a single integer label per point.  Values 0–3.
+    bit 1) into a single integer label per point.  Values 0--3.
 
     Preprocessing must have been run first (preprocess_rellis.py).
     """

@@ -27,7 +27,7 @@ import yaml
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
 from apairo import Goose3DDataset
-from preprocessing import GICPPoses, TravFromTraj, TravFromTerrain
+from apairo_preprocess import GICPPoses, TravFromTraj, TravFromTerrain
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
 log = logging.getLogger(__name__)
