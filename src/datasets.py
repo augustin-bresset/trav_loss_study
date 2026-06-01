@@ -192,7 +192,7 @@ class GooseTorchDataset(Dataset, Goose3DDataset):
 
 
 class GooseCompositeDataset(Dataset, Goose3DDataset):
-    """GOOSE-3D dataset with merged traversability label for apairo_visu.
+    """GOOSE-3D dataset with merged traversability label for apairo_rr.
 
     ``__getitem__`` returns an apairo ``Sample`` with ``trav_composite``.
 
@@ -328,7 +328,7 @@ class RellisTorchDataset(Dataset, Rellis3DDataset):
 
 
 class RellisCompositeDataset(Dataset, Rellis3DDataset):
-    """RELLIS-3D dataset with merged traversability label for apairo_visu.
+    """RELLIS-3D dataset with merged traversability label for apairo_rr.
 
     ``__getitem__`` returns an apairo ``Sample`` with ``trav_composite``.
 

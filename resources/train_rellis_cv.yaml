@@ -1,5 +1,5 @@
 data:
-  root:       /path/to/RELLIS        # RELLIS root (parent of Rellis-3D/)
+  root:       /home/abresset/data/rellis # RELLIS root (parent of Rellis-3D/)
   voxel_size: 0.1
   max_rad:    50.0
   min_pos:    1

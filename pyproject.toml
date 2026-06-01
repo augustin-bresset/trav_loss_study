@@ -17,7 +17,7 @@ dependencies = [
     
     "torchsparse @ git+https://github.com/augustin-bresset/torchsparse.git",
     "apairo @ git+https://github.com/apairo-robotics/apairo.git",
-    "apairo-visu @ git+https://github.com/apairo-robotics/apairo_visu.git",
+    "apairo-rr @ git+https://github.com/apairo-robotics/apairo_rr.git",
     "apairo-preprocess @ git+https://github.com/apairo-robotics/apairo_preprocess.git",
     
 ]

@@ -1,29 +1,15 @@
-"""Interactive 3-D visualisation of GOOSE-3D traversability labels.
+"""Visualise GOOSE-3D traversability labels with Rerun.
 
-Launches ``apairo_visu.LidarViewer`` with a composite label that encodes:
+  bit 0 (+1): trav_gt       — trajectory ground truth      green
+  bit 1 (+2): semantic trav — GOOSE classes → traversable  blue
+  both  (3) :               — full agreement               yellow
 
-  bit 0  (value +1)  trav_gt       — trajectory-based ground truth (green)
-  bit 1  (value +2)  semantic trav  — GOOSE semantic-based (blue)
-  bit 2  (value +4)  semantic trav — GOOSE classes mapped to traversable (purple)
-
-Combined label in [0, 7]:
-  0  none-traversable      (gray)
-  1  GT only               (green)
-  2  terrain only          (blue)
-  3  GT + terrain          (yellow / lime)
-  4  semantic only         (purple)
-  5  GT + semantic         (teal)
-  6  terrain + semantic    (cyan)
-  7  all three agree       (white)
-
-A trained checkpoint can optionally be overlaid as an 8th label channel
-(bit 3, value +8 -> labels in [0, 15]) by providing --checkpoint.
+An optional second pipeline shows a trained model's binary predictions.
 
 Usage:
-    python -m scripts.visualize_goose --root /data/goose/GOOSE_3D --split val
-    python -m scripts.visualize_goose --root /data/goose/GOOSE_3D --split val --no-semantic
-    python -m scripts.visualize_goose --root /data/goose/GOOSE_3D --split val --start 42
-    python -m scripts.visualize_goose --root /data/goose/GOOSE_3D --split val \\
+    python -m scripts.visualize.visualize_goose --root /data/goose/GOOSE_3D
+    python -m scripts.visualize.visualize_goose --root /data/goose/GOOSE_3D --start 42
+    python -m scripts.visualize.visualize_goose --root /data/goose/GOOSE_3D \\
         --checkpoint data/checkpoints/goose/bce_run/best.pth
 """
 
@@ -36,150 +22,81 @@ from pathlib import Path
 import numpy as np
 import torch
 
-sys.path.insert(0, str(Path(__file__).parents[1]))
+_ROOT = Path(__file__).parents[2]
+sys.path.insert(0, str(_ROOT))
 
-import apairo_visu
-from apairo_visu import LidarViewer, ViewConfig
-from apairo.core.sample import Sample
+import apairo_rr
+from apairo_rr import Pipeline
 from src.datasets import GooseCompositeDataset
 
+VOXEL_SIZE = 0.1
+MAX_RAD    = 50.0
 
-# ---------------------------------------------------------------------------
-# Optional model prediction overlay
-# ---------------------------------------------------------------------------
+TRAV_COMPOSITE_CFG = {
+    "color_map": {
+        0: [128, 128, 128],
+        1: [39,  174,  96],
+        2: [41,  128, 185],
+        3: [244, 208,  63],
+    },
+    "semantic_map": {
+        0: "non-traversable",
+        1: "trav-gt only",
+        2: "semantic only",
+        3: "gt + semantic",
+    },
+}
+
+MODEL_CFG = {
+    "color_map":    {0: [200, 60, 60], 1: [50, 200, 80]},
+    "semantic_map": {0: "not traversable", 1: "traversable"},
+}
 
 
-def _add_model_predictions(
-    composite_ds: GooseCompositeDataset,
-    checkpoint: Path,
-    device: str = "cpu",
-) -> "ModelOverlayDataset":
+def make_inference_step(checkpoint: Path, device: str):
     from src.models.sparse_trav_net import SparseTravNet
-    from torchsparse.utils.quantize import sparse_quantize
     from torchsparse import SparseTensor
+    from torchsparse.utils.quantize import sparse_quantize
 
-    model = SparseTravNet().to(device)
-    model.load_state_dict(torch.load(checkpoint, map_location=device))
+    model = SparseTravNet(in_channels=4, cr=1.0).to(device)
+    model.load_state_dict(torch.load(checkpoint, map_location=device, weights_only=True))
     model.eval()
-    return ModelOverlayDataset(composite_ds, model, device)
 
+    def _infer(pts: np.ndarray, labels: np.ndarray | None):
+        xyz, intensity = pts[:, :3].astype(np.float32), pts[:, 3].astype(np.float32)
+        mask = np.linalg.norm(xyz, axis=1) < MAX_RAD
+        xyz_f, inten_f = xyz[mask], intensity[mask]
+        if len(xyz_f) == 0:
+            return pts, np.zeros(len(pts), dtype=np.int64)
 
-class ModelOverlayDataset:
-    """Wrap GooseCompositeDataset to add model prediction bit (bit 3)."""
-
-    VOXEL_SIZE = 0.1
-    MAX_RAD    = 50.0
-
-    def __init__(self, base_ds, model, device: str) -> None:
-        self._base  = base_ds
-        self._model = model
-        self._dev   = device
-
-    def __len__(self) -> int:
-        return len(self._base)
-
-    def __getitem__(self, idx: int) -> Sample:
-        from torchsparse.utils.quantize import sparse_quantize
-        from torchsparse import SparseTensor
-
-        sample  = self._base[idx]
-        pc      = np.asarray(sample.data["lidar"])
-        xyz     = pc[:, :3]
-        inten   = pc[:, 3]
-        mask    = np.linalg.norm(xyz, axis=1) < self.MAX_RAD
-        xyz_f   = xyz[mask]
-        inten_f = inten[mask]
-        feats   = np.column_stack([xyz_f, inten_f]).astype(np.float32)
-
-        coords_q = np.floor(xyz_f / self.VOXEL_SIZE).astype(np.int32)
+        coords_q = np.floor(xyz_f / VOXEL_SIZE).astype(np.int32)
         coords_q, sel, inv = sparse_quantize(coords_q, return_index=True, return_inverse=True)
-        feats_q  = feats[sel]
+        feats = np.column_stack([xyz_f[sel], inten_f[sel]])
+        bc    = np.hstack([np.zeros((len(coords_q), 1), dtype=np.int32), coords_q])
 
-        batch_coords = np.hstack([np.zeros((len(coords_q), 1), dtype=np.int32), coords_q])
         st = SparseTensor(
-            coords=torch.from_numpy(batch_coords).int(),
-            feats=torch.from_numpy(feats_q).float(),
-        ).to(self._dev)
-
+            coords=torch.from_numpy(bc).int(),
+            feats=torch.from_numpy(feats).float(),
+        ).to(device)
         with torch.no_grad():
-            logits  = self._model(st)
-            pred_vox = (torch.sigmoid(logits) > 0.5).cpu().numpy().astype(np.int32)  # (V,)
+            pred_vox = (torch.sigmoid(model(st)) > 0.5).cpu().numpy().astype(np.int64)
 
-        # Map voxel prediction back to points (via inverse quantization)
-        pred_pts_masked = pred_vox[inv]  # (N_masked,)
-        pred_pts = np.zeros(len(pc), dtype=np.int32)
-        pred_pts[mask] = pred_pts_masked
+        pred_pts = np.zeros(len(pts), dtype=np.int64)
+        pred_pts[mask] = pred_vox[inv]
+        return pts, pred_pts
 
-        composite = np.asarray(sample.data["trav_composite"]).astype(np.int32)
-        composite |= pred_pts << 3  # bit 3 = model prediction
-
-        return Sample(data={
-            "lidar": sample.data["lidar"],
-            "trav_composite": composite,
-        })
-
-
-# ---------------------------------------------------------------------------
-# Label config builder
-# ---------------------------------------------------------------------------
-
-
-def _make_label_cfg(with_model: bool = False) -> dict:
-    """Build a label config dict for the composite traversability label."""
-    color_map = {
-        0: "#808080",  # none
-        1: "#27AE60",  # GT only           — green
-        2: "#2980B9",  # terrain only      — blue
-        3: "#F4D03F",  # GT + terrain      — yellow
-        4: "#8E44AD",  # semantic only     — purple
-        5: "#1ABC9C",  # GT + semantic     — teal
-        6: "#00BCD4",  # terrain + semantic — cyan
-        7: "#FFFFFF",  # all three agree   — white
-    }
-    semantic_map = {
-        0: "none",
-        1: "gt_only",
-        2: "terrain_only",
-        3: "gt+terrain",
-        4: "semantic_only",
-        5: "gt+semantic",
-        6: "terrain+semantic",
-        7: "all_agree",
-    }
-
-    if with_model:
-        extra_colors = {
-            k + 8: v for k, v in color_map.items()
-        }
-        # tint model-predicted values with a red overlay indicator
-        for k in list(extra_colors):
-            r, g, b = _hex_to_rgb(extra_colors[k])
-            blended = f"#{min(255, r+60):02X}{g:02X}{b:02X}"
-            extra_colors[k] = blended
-            semantic_map[k] = semantic_map[k - 8] + "+model"
-        color_map.update(extra_colors)
-
-    return {"color_map": color_map, "semantic_map": semantic_map}
-
-
-def _hex_to_rgb(h: str) -> tuple[int, int, int]:
-    h = h.lstrip("#")
-    return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
-
-
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
+    return _infer
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Visualise GOOSE traversability labels.")
-    parser.add_argument("--root",       required=True, help="GOOSE_3D root (above train/val dirs).")
-    parser.add_argument("--split",      default="val", choices=["train", "val"])
-    parser.add_argument("--start",      type=int, default=0, help="First frame to display.")
-    parser.add_argument("--no-semantic", action="store_true", help="Disable GOOSE semantic bit.")
-    parser.add_argument("--checkpoint", default=None, help="Model checkpoint to overlay (optional).")
-    parser.add_argument("--device",     default="cpu")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--root",        required=True)
+    parser.add_argument("--split",       default="val", choices=["train", "val"])
+    parser.add_argument("--start",       type=int, default=0)
+    parser.add_argument("--every",       type=int, default=1)
+    parser.add_argument("--no-semantic", action="store_true")
+    parser.add_argument("--checkpoint",  default=None)
+    parser.add_argument("--device",      default="cpu")
     args = parser.parse_args()
 
     dataset = GooseCompositeDataset(
@@ -187,24 +104,29 @@ def main() -> None:
         split=args.split,
         with_semantic=not args.no_semantic,
     )
+    print(f"Dataset: {args.root}  split={args.split}  ({len(dataset)} scans)")
+
+    pipelines  = [Pipeline("GT composite")]
+    label_cfgs = [TRAV_COMPOSITE_CFG]
 
     if args.checkpoint:
         ckpt = Path(args.checkpoint)
         if not ckpt.exists():
             print(f"[warn] checkpoint not found: {ckpt}")
         else:
-            dataset = _add_model_predictions(dataset, ckpt, args.device)
+            pipelines.append(Pipeline(f"Model: {ckpt.parent.name}",
+                                      [make_inference_step(ckpt, args.device)]))
+            label_cfgs.append(MODEL_CFG)
 
-    label_cfg_path = Path(__file__).parents[1] / "resources" / "trav_composite_label_cfg.yaml"
-    label_cfg = apairo_visu.load_label_config(label_cfg_path)
-    view_cfg  = ViewConfig(point_key="lidar", label_key="trav_composite")
-
-    print(f"Dataset : {args.root}  split={args.split}  ({len(dataset)} scans)")
-    print("Label encoding:")
-    for cid, name in sorted(label_cfg["semantic_map"].items()):
-        print(f"  {cid:2d}  {name}")
-
-    LidarViewer.launch(dataset, view_cfg=view_cfg, label_cfg=label_cfg, start_idx=args.start)
+    apairo_rr.view(
+        dataset,
+        label_cfgs=label_cfgs,
+        label_key="trav_composite",
+        point_key="lidar",
+        pipelines=pipelines,
+        frames=range(args.start, len(dataset), args.every),
+        application_id="goose_traversability",
+    )
 
 
 if __name__ == "__main__":
