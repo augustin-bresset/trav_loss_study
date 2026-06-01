@@ -30,7 +30,6 @@ from torch.utils.data import DataLoader
 
 sys.path.insert(0, str(Path(__file__).parents[2]))
 
-from apairo import Rellis3DDataset, split_sequences
 from src.datasets import RellisTorchDataset, sparse_collate
 from src.losses.binary_class import TRAV_LOSSES
 from src.metrics import BinaryMetrics, RankingMetrics, CalibrationMetrics
@@ -69,6 +68,22 @@ EXPERIMENTS: list[dict] = [
 # ---------------------------------------------------------------------------
 # Config helpers
 # ---------------------------------------------------------------------------
+
+def _discover_sequences(root: Path) -> list[str]:
+    """Return sorted sequence IDs from the RELLIS-3D filesystem layout.
+
+    Handles both  root/Rellis-3D/{seq_id}/  and  root/{seq_id}/  layouts.
+    """
+    candidate = root / "Rellis-3D"
+    search_dir = candidate if candidate.is_dir() else root
+    seq_ids = sorted(
+        d.name for d in search_dir.iterdir()
+        if d.is_dir() and not d.name.startswith(".")
+    )
+    if not seq_ids:
+        raise FileNotFoundError(f"No sequence directories found under {search_dir}")
+    return seq_ids
+
 
 def load_cfg(path: str) -> dict:
     with open(path) as f:
@@ -201,9 +216,8 @@ def main() -> None:
 
     cfg = load_cfg(args.config)
 
-    # Discover RELLIS sequences
-    probe   = Rellis3DDataset(cfg["data"]["root"], keys=["lidar"])
-    seq_ids = probe.sequence_ids
+    # Discover RELLIS sequences from filesystem (Rellis-3D/{seq_id}/ layout)
+    seq_ids = _discover_sequences(Path(cfg["data"]["root"]))
     print(f"Found {len(seq_ids)} RELLIS sequences: {seq_ids}")
 
     if len(seq_ids) < 2:
