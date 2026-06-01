@@ -11,7 +11,7 @@ Label encoding (composite bits):
   bit 3 (+8)   model_pred    — trained model prediction     orange tint
 
 Keyboard shortcuts (from apairo_visu):
-  → / L        next frame
+  -> / L        next frame
   ← / H        previous frame
   T            cycle colour mode (semantic / intensity / height)
   B            bird's-eye view
@@ -180,7 +180,7 @@ def make_inference_step(model: SparseTravNet, device: str):
             logits   = model(st)
             pred_vox = (torch.sigmoid(logits) > 0.5).cpu().numpy().astype(np.int32)
 
-        # Voxel → point mapping (points outside max_rad stay 0)
+        # Voxel -> point mapping (points outside max_rad stay 0)
         pred_pts = np.zeros(len(pts), dtype=np.int32)
         pred_pts[mask] = pred_vox[inv]
 
@@ -258,7 +258,7 @@ def main() -> None:
     for p in pipelines:
         print(f"  · {p.name}")
 
-    print("\nControls: ← → (or H/L) navigate  |  T colour mode  |  B bird's-eye  |  R reset\n")
+    print("\nControls: ← -> (or H/L) navigate  |  T colour mode  |  B bird's-eye  |  R reset\n")
 
     # ── launch ───────────────────────────────────────────────────────────────
     LidarViewer.launch(

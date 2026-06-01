@@ -10,10 +10,10 @@ Results are saved to ``data/study_results.{json,csv}`` and printed as a table.
 Experiment grid is motivated by study_goose results (data/goose_study_results.json):
   - BCE / focal / uPU had precision≈0.87 but recall≤0.23 (too conservative)
   - nnPU (prior=0.5) had recall=1.0 (too aggressive, predicts everything positive)
-  → Group A: sweep nnPU prior downward to find the precision-recall sweet spot
-  → Group B: nnPU beta floor to stabilise gradient clamping
-  → Group C: push focal harder (gamma, pos_weight) to rescue recall
-  → Group D: new losses (Tversky, Lovász, FocalnnPU, ASL)
+  -> Group A: sweep nnPU prior downward to find the precision-recall sweet spot
+  -> Group B: nnPU beta floor to stabilise gradient clamping
+  -> Group C: push focal harder (gamma, pos_weight) to rescue recall
+  -> Group D: new losses (Tversky, Lovász, FocalnnPU, ASL)
 
 Usage:
     python -m scripts.study_losses                              # all losses
@@ -44,8 +44,8 @@ EXPERIMENTS: list[dict] = [
         "overrides": {"loss.name": "focal", "loss.gamma": 2.0, "loss.pos_weight": 3.6},
     },
     # ── Group A: nnPU prior sweep ─────────────────────────────────────────────
-    # study 1: nnPU(prior=0.5) → recall=1.0, model predicts everything positive
-    # → lower prior reduces pressure toward positive, improves precision
+    # study 1: nnPU(prior=0.5) -> recall=1.0, model predicts everything positive
+    # -> lower prior reduces pressure toward positive, improves precision
     {
         "name": "nnpu_prior20",
         "overrides": {"loss.name": "nnpu", "loss.prior": 0.20, "loss.beta": 0.0},
@@ -59,7 +59,7 @@ EXPERIMENTS: list[dict] = [
         "overrides": {"loss.name": "nnpu", "loss.prior": 0.40, "loss.beta": 0.0},
     },
     # ── Group B: nnPU beta floor sweep (prior fixed at 0.5) ───────────────────
-    # beta > 0 clamps the neg-risk floor → gradient cut-off is less aggressive
+    # beta > 0 clamps the neg-risk floor -> gradient cut-off is less aggressive
     {
         "name": "nnpu_beta01",
         "overrides": {"loss.name": "nnpu", "loss.prior": 0.50, "loss.beta": 0.01},
@@ -74,8 +74,8 @@ EXPERIMENTS: list[dict] = [
         "overrides": {"loss.name": "nnpu", "loss.prior": 0.30, "loss.beta": 0.02},
     },
     # ── Group C: focal parameter sweep ───────────────────────────────────────
-    # study 1: focal(gamma=2, pw=3.6) → recall=0.21 still too low
-    # → push gamma and pos_weight harder to force recall up
+    # study 1: focal(gamma=2, pw=3.6) -> recall=0.21 still too low
+    # -> push gamma and pos_weight harder to force recall up
     {
         "name": "focal_g3_pw6",
         "overrides": {"loss.name": "focal", "loss.gamma": 3.0, "loss.pos_weight": 6.0},
@@ -222,7 +222,7 @@ def main() -> None:
 
         def _fmt(v): return f"{v:.4f}" if isinstance(v, float) else "N/A"
         print(
-            f"  → f1={_fmt(summary['best_val_f1'])}"
+            f"  -> f1={_fmt(summary['best_val_f1'])}"
             f"  terrain={_fmt(summary['best_alt_agreement'])}"
             f"  status={status}"
         )
@@ -265,7 +265,7 @@ def main() -> None:
             f"{fmt(r.get('best_alt_agreement')):>9}  "
             f"{r['status']}"
         )
-    print(f"\nSaved → {results_json}  /  {results_csv}")
+    print(f"\nSaved -> {results_json}  /  {results_csv}")
 
 
 if __name__ == "__main__":

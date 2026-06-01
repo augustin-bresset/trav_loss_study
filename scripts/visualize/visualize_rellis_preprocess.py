@@ -10,9 +10,9 @@ Viewports:
   · Sem Label     — TravFromLabels output only (blue / gray)
 
 Composite encoding (values 0--3):
-  bit 0 (+1) : trav_gt    — trajectory ground truth  →  green
-  bit 1 (+2) : trav_label — semantic-based label     →  blue
-  both (3)               — full agreement            →  yellow
+  bit 0 (+1) : trav_gt    — trajectory ground truth  ->  green
+  bit 1 (+2) : trav_label — semantic-based label     ->  blue
+  both (3)               — full agreement            ->  yellow
 
 Usage:
     python -m scripts.visualize.visualize_rellis_preprocess
@@ -86,7 +86,7 @@ def main() -> None:
     print("  green  — trav_gt only  (trajectory GT)")
     print("  blue   — trav_label only  (semantic-based)")
     print("  yellow — both agree")
-    print("\nControls: ← → (or H/L) navigate  |  T colour mode  |  B bird's-eye  |  R reset\n")
+    print("\nControls: ← -> (or H/L) navigate  |  T colour mode  |  B bird's-eye  |  R reset\n")
 
     LidarViewer.launch(
         dataset,

@@ -24,7 +24,7 @@ loss:
   pos_weight: 3.6      # ~1 / positive_ratio
 
   # upu / nnpu / focal_nnpu
-  prior: 0.30          # lower than 0.5 → better precision-recall balance (study1 result)
+  prior: 0.30          # lower than 0.5 -> better precision-recall balance (study1 result)
   beta:  0.0           # nnpu gradient floor
 
   # tversky

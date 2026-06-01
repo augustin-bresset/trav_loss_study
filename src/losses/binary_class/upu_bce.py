@@ -69,51 +69,40 @@ class uPULoss(nn.Module):
         return self.prior * r_p_pos - self.prior * r_p_neg + r_u_neg
 
 
-class nnPULoss(nn.Module):
-    """Non-negative PU risk estimator (Kiryo et al. 2017).
 
-    Fixes the instability of uPU by clamping the estimated negative risk
-    to be non-negative (hence nnPU):
+if __name__ == "__main__":
+    import unittest
 
-      R(f) = π · R_P^+ + max(β, R_U^- - π · R_P^-)
+    class TestUPULoss(unittest.TestCase):
+        def setUp(self):
+            torch.manual_seed(0)
+            self.loss    = uPULoss(prior=0.3)
+            self.logits  = torch.randn(128)
+            self.targets = torch.randint(0, 2, (128,)).long()
 
-    When the negative term goes below β the gradient is set to zero
-    (detached from the negative branch), preventing label-flipping.
+        def test_output_scalar(self):
+            self.assertEqual(self.loss(self.logits, self.targets).shape, torch.Size([]))
 
-    Args:
-        prior: π — estimated fraction of truly positive points among unlabeled.
-        beta:  Floor for the negative risk term (default 0).
-    """
+        def test_backward(self):
+            logits = self.logits.requires_grad_(True)
+            self.loss(logits, self.targets).backward()
+            self.assertIsNotNone(logits.grad)
 
-    def __init__(self, prior: float = 0.1, beta: float = 0.0) -> None:
-        super().__init__()
-        if not 0 < prior < 1:
-            raise ValueError(f"prior must be in (0, 1), got {prior}")
-        self.prior = prior
-        self.beta = beta
+        def test_invalid_prior_raises(self):
+            with self.assertRaises(ValueError):
+                uPULoss(prior=0.0)
+            with self.assertRaises(ValueError):
+                uPULoss(prior=1.5)
 
-    def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-        """
-        Args:
-            logits:  (N,) raw scores (pre-sigmoid).
-            targets: (N,) binary labels — 1 = positive, 0 = unlabeled.
-        """
-        pos = targets == 1
-        unl = targets == 0
+        def test_no_positives_fallback(self):
+            targets_unl = torch.zeros(128, dtype=torch.long)
+            out = self.loss(self.logits, targets_unl)
+            self.assertEqual(out.shape, torch.Size([]))
 
-        if pos.sum() == 0:
-            return _bce_neg(logits[unl]).mean()
+        def test_can_go_negative(self):
+            # uPU (unlike nnPU) is allowed to produce negative risk — just check it runs
+            loss_high_prior = uPULoss(prior=0.99)
+            out = loss_high_prior(self.logits, self.targets)
+            self.assertEqual(out.shape, torch.Size([]))
 
-        r_p_pos = _bce_pos(logits[pos]).mean()
-        r_p_neg = _bce_neg(logits[pos]).mean()
-        r_u_neg = _bce_neg(logits[unl]).mean() if unl.sum() > 0 else torch.tensor(0.0, device=logits.device)
-
-        neg_risk = r_u_neg - self.prior * r_p_neg
-
-        if neg_risk < self.beta:
-            # Clamp: back-propagate through r_p_pos only, detach negative branch
-            loss = self.prior * r_p_pos - neg_risk.detach() + self.beta
-        else:
-            loss = self.prior * r_p_pos + neg_risk
-
-        return loss
+    unittest.main()

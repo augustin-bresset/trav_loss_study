@@ -1,8 +1,8 @@
 """Preprocess RELLIS-3D for traversability training.
 
 Pipeline:
-  1. TraversabilityFromLabels   — semantic label → binary traversable  (trav_label)
-  2. TraversabilityFromTrajectory — robot trajectory footprint → trav_gt
+  1. TraversabilityFromLabels   — semantic label -> binary traversable  (trav_label)
+  2. TraversabilityFromTrajectory — robot trajectory footprint -> trav_gt
 
 Both steps delegate to ``Rellis3DDataset.run_preprocess()``, which handles file
 placement via ``derived_path()``, format-specific writing, and channel

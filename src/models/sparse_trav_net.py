@@ -18,7 +18,7 @@ class SparseTravNet(nn.Module):
     """3-level UNet with TorchSparse sparse convolutions.
 
     Outputs one logit per voxel (binary traversability).
-    Input features: [x, y, z, intensity] → in_channels=4.
+    Input features: [x, y, z, intensity] -> in_channels=4.
     """
 
     def __init__(self, in_channels: int = 4, cr: float = 1.0) -> None:
@@ -46,7 +46,7 @@ class SparseTravNet(nn.Module):
             ResidualBlock(cs[2], cs[2], ks=3, stride=1),
         )
 
-        # cs[3] = 64, cs[2] = 128 → cat → 192 in
+        # cs[3] = 64, cs[2] = 128 -> cat -> 192 in
         self.up1 = nn.ModuleList([
             BasicDeconvolutionBlock(cs[2], cs[3], ks=2, stride=2),
             nn.Sequential(
@@ -55,7 +55,7 @@ class SparseTravNet(nn.Module):
             ),
         ])
 
-        # cs[4] = 32, cs[3] = 64 → cat → 96 in
+        # cs[4] = 32, cs[3] = 64 -> cat -> 96 in
         self.up2 = nn.ModuleList([
             BasicDeconvolutionBlock(cs[3], cs[4], ks=2, stride=2),
             nn.Sequential(

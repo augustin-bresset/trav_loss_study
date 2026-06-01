@@ -9,25 +9,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-
-class BinaryMetrics:
-    def __init__(self) -> None:
-        self.TP = self.FP = self.FN = self.TN = 0
-
-    def update(self, logits: torch.Tensor, labels: torch.Tensor, threshold: float = 0.5) -> None:
-        preds = (torch.sigmoid(logits) > threshold).cpu().numpy().astype(bool)
-        y = labels.cpu().numpy().astype(bool)
-        self.TP += int(( preds &  y).sum())
-        self.FP += int(( preds & ~y).sum())
-        self.FN += int((~preds &  y).sum())
-        self.TN += int((~preds & ~y).sum())
-
-    def compute(self) -> dict[str, float]:
-        prec = self.TP / (self.TP + self.FP + 1e-8)
-        rec  = self.TP / (self.TP + self.FN + 1e-8)
-        f1   = 2 * prec * rec / (prec + rec + 1e-8)
-        acc  = (self.TP + self.TN) / (self.TP + self.FP + self.FN + self.TN + 1e-8)
-        return {"precision": prec, "recall": rec, "f1": f1, "acc": acc}
+from .metrics import BinaryMetrics, RankingMetrics, CalibrationMetrics
 
 
 def terrain_agreement(logits: torch.Tensor, terrain: torch.Tensor, threshold: float = 0.5) -> float:
@@ -82,9 +64,13 @@ class Trainer:
             for k, v in vm.items():
                 self.writer.add_scalar(f"val/{k}", v, epoch)
 
+            gt_sem = vm.get("gt_sem_agree", float("nan"))
+            gt_sem_str = f"  gt↔sem={gt_sem:.3f}" if not np.isnan(gt_sem) else ""
             print(
                 f"  val  loss={vm['loss']:.4f}  f1={vm['f1']:.4f}"
-                f"  alt_agree={vm['alt_agreement']:.4f}"
+                f"  iou={vm['iou']:.4f}  pr_auc={vm['pr_auc']:.4f}"
+                f"  ece={vm['ece']:.4f}  coll_fpr={vm['collision_fpr']:.4f}"
+                + gt_sem_str
             )
 
             if vm["f1"] > best_f1:
@@ -99,7 +85,8 @@ class Trainer:
 
     def _train_epoch(self, epoch: int) -> dict[str, float]:
         self.model.train()
-        losses, metrics = [], BinaryMetrics()
+        losses  = []
+        metrics = BinaryMetrics()
         use_amp = self.device.type == "cuda"
 
         for i, batch in enumerate(self.train_loader):
@@ -139,7 +126,10 @@ class Trainer:
 
     def _val_epoch(self, epoch: int) -> dict[str, float]:
         self.model.eval()
-        losses, metrics = [], BinaryMetrics()
+        losses         = []
+        metrics        = BinaryMetrics()
+        ranking        = RankingMetrics()
+        calibration    = CalibrationMetrics()
         alt_agreements: list[float] = []
         use_amp = self.device.type == "cuda"
 
@@ -158,11 +148,24 @@ class Trainer:
                     continue
 
                 losses.append(loss.item())
-                metrics.update(logits, labels)
-                if alt is not None:
-                    alt_agreements.append(terrain_agreement(logits.cpu(), alt))
 
-        result = metrics.compute()
-        result["loss"]          = float(np.mean(losses)) if losses else float("nan")
-        result["alt_agreement"] = float(np.mean(alt_agreements)) if alt_agreements else 0.0
+                # When alt_labels (semantic GT) is available, use it as the
+                # evaluation reference — training loss stays on traj-GT (labels)
+                # but metrics reflect how well the model predicts true traversability.
+                eval_labels = alt.to(self.device) if alt is not None else labels
+                metrics.update(logits, eval_labels)
+                ranking.update(logits, eval_labels)
+                calibration.update(logits, eval_labels)
+
+                # Also track agreement between traj-GT and semantic-GT predictions
+                if alt is not None:
+                    alt_agreements.append(terrain_agreement(logits.cpu(), labels.cpu()))
+
+        result = {
+            **metrics.compute(),
+            **ranking.compute(),
+            **calibration.compute(),
+            "loss":           float(np.mean(losses)) if losses else float("nan"),
+            "gt_sem_agree":   float(np.mean(alt_agreements)) if alt_agreements else float("nan"),
+        }
         return result

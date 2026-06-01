@@ -6,9 +6,9 @@ import numpy as np
 
 
 from .lovasz_softmax import Lovasz_softmax
-from .dice_loss import MultiLabelDice, DiceLoss
+from ..binary_class.dice_loss import MultiLabelDice, DiceLoss
 
-from .custom_losses import (
+from ..custom_losses import (
     ClassificationCriterion,
     CategoricalMSE,
     RegressionCriterion,

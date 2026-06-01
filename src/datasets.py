@@ -198,8 +198,8 @@ class GooseCompositeDataset(Dataset, Goose3DDataset):
 
     Label encoding::
 
-        bit 0 (1): trav_gt       — trajectory GT      → green
-        bit 1 (2): GOOSE semantic traversable         → blue  (optional)
+        bit 0 (1): trav_gt       — trajectory GT      -> green
+        bit 1 (2): GOOSE semantic traversable         -> blue  (optional)
 
     Args:
         root_dir:        GOOSE root directory.
@@ -256,7 +256,7 @@ class RellisTorchDataset(Dataset, Rellis3DDataset):
     Inherits file discovery and ``sequence_ids`` / ``sequence()`` API from
     ``Rellis3DDataset``.
     Primary label: ``trav_gt`` (trajectory footprint).
-    Secondary label: ``trav_label`` (semantic-based estimate) → ``alt_labels``.
+    Secondary label: ``trav_label`` (semantic-based estimate) -> ``alt_labels``.
 
     Rellis-3D has no built-in train/val split.  Use ``apairo.split_sequences``
     on ``dataset.sequence_ids`` to get the ID lists, then pass them here.
@@ -334,9 +334,9 @@ class RellisCompositeDataset(Dataset, Rellis3DDataset):
 
     Label encoding::
 
-        bit 0 (1): trav_gt     — trajectory GT       → green
-        bit 1 (2): trav_label  — semantic-based GT   → blue
-        both (3)               — full agreement       → yellow
+        bit 0 (1): trav_gt     — trajectory GT       -> green
+        bit 1 (2): trav_label  — semantic-based GT   -> blue
+        both (3)               — full agreement       -> yellow
 
     Args:
         root_dir: RELLIS root directory (parent of ``Rellis-3D/``).

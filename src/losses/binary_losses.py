@@ -28,7 +28,7 @@ class BinaryTverskyLoss(nn.Module):
     TI = TP / (TP + alpha*FP + beta*FN)
     Loss = 1 - TI
 
-    Setting alpha < beta penalises false negatives more → boosts recall.
+    Setting alpha < beta penalises false negatives more -> boosts recall.
     alpha + beta = 1 is a common convention (Salehi et al. 2017).
 
     Args:

@@ -17,7 +17,7 @@ Combined label in [0, 7]:
   7  all three agree       (white)
 
 A trained checkpoint can optionally be overlaid as an 8th label channel
-(bit 3, value +8 → labels in [0, 15]) by providing --checkpoint.
+(bit 3, value +8 -> labels in [0, 15]) by providing --checkpoint.
 
 Usage:
     python -m scripts.visualize_goose --root /data/goose/GOOSE_3D --split val

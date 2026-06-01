@@ -1,8 +1,8 @@
 """Preprocess a GOOSE-3D split for traversability training.
 
 Pipeline (per split):
-  1. GICPOdometry           — scan-to-scan GICP → gicp_poses channel (4×4 per scan)
-  2. TraversabilityFromTrajectory — trajectory footprint → trav_gt channel (uint8 per point)
+  1. GICPOdometry           — scan-to-scan GICP -> gicp_poses channel (4×4 per scan)
+  2. TraversabilityFromTrajectory — trajectory footprint -> trav_gt channel (uint8 per point)
 
 Each step is registered in .apairo so the dataset can load derived channels.
 
