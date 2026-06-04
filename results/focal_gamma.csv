@@ -1,0 +1,8 @@
+Experiment (Loss),Best Epoch,Max F1 Score,Status / Behavior
+focal_g05_pw60,1,0.0010,"Failed: f1 stuck near 0, unable to learn"
+focal_g10_pw60,10,0.5333,Steady progress up to the very last epoch
+focal_g15_pw60,8,0.5287,"Peaks at epoch 8, plateaus gracefully around 0.50"
+focal_g20_pw60,5,0.5268,"Early peak at epoch 5, fluctuates between 0.50 and 0.52"
+focal_g25_pw60,6,0.5236,"Peaks at epoch 6, then suffers from performance degradation"
+focal_g30_pw60,7,0.5350,Fluctuates but manages a late peak at epoch 7
+focal_g40_pw60,4,0.5362,"Top Performer: Sharp early convergence, stable afterwards"

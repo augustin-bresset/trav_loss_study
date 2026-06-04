@@ -1,0 +1,19 @@
+Experiment (Loss),Best Epoch,Max F1 Score,Status / Behavior
+focal_g10_pw20,4,0.4306,Stagnates and decreases slightly afterwards
+focal_g10_pw40,19,0.5002,Exception: Slow and continuous improvement
+focal_g20_pw20,8,0.4340,Fluctuates and drops back down around 0.40
+focal_g20_pw40,13,0.5103,Slight decrease and stabilization around 0.49
+focal_g20_pw60,4,0.5176,"Reaches peak very early, fluctuates afterwards"
+asl_gn2_c05,1,0.0002,Failed: loss = inf from the start
+asl_gn2_c10,6,0.1059,Unstable: loss = nan (Very low score)
+asl_gn2_c20,7,0.3654,Unstable: loss = nan (Score frozen from the start)
+asl_gn4_c05,17,0.3764,Unstable: loss = nan (Score frozen from the start)
+asl_gn4_c10,8,0.0787,Failed: loss = nan (Very low score)
+asl_gn4_c20,8,0.2332,Unstable: loss = nan
+asl_gn6_c05,5,0.0027,Failed: loss = nan
+asl_gn6_c10,4,0.3597,Unstable: loss = nan (Score completely frozen)
+asl_gn6_c20,19,0.3247,Unstable: loss = nan (Very minor fluctuations)
+tversky_a01,8,0.3751,"Decreases after epoch 8, stagnates around 0.33"
+tversky_a02,2,0.2694,Drops immediately after epoch 2
+tversky_a03,4,0.2362,Drops and stagnates at a low level (0.20)
+tversky_extreme_a005,6,0.4431,Stagnates between 0.41 and 0.43 afterwards

@@ -1,0 +1,6 @@
+Experiment (Loss),Best Epoch,Max F1 Score,Status / Behavior
+bce_pw20,4,0.4379,"Reaches peak early, then drops and fluctuates between 0.36 and 0.40"
+bce_pw40,4,0.4837,"Reaches peak early, drops immediately at epoch 5 and stagne around 0.40"
+bce_pw60,2,0.5138,"Reaches peak very early, then steadily decreases below 0.47"
+bce_pw80,17,0.5563,"Top Performer: Continuous late progress, hitting its peak near the end"
+bce_pw100,5,0.5316,"Peaks early, fluctuates widely, and experiences performance degradation"
