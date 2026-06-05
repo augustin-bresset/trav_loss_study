@@ -1,5 +1,5 @@
 data:
-  root: /home/abresset/data/rellis
+  root: /mnt/vault-fellowship/rellis
 
 # RELLIS semantic IDs treated as traversable
 traversable_ids:

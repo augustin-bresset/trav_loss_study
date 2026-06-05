@@ -1,0 +1,68 @@
+data:
+  root:       ~/data/rellis
+  voxel_size: 0.1
+  min_pos:    1
+
+model:
+  in_channels: 4
+  cr:          0.5
+
+training:
+  epochs:      10
+  batch_size:  32
+  lr:          0.001
+  weight_decay: 0.0001
+  num_workers: 4
+  device:      cuda
+
+logging:
+  log_dir:  data/logs/rellis_nnpu/
+  save_dir: data/checkpoints/rellis_nnpu/
+
+experiments:
+
+  # ── nnPU BCE — sweep prior ────────────────────────────────────────────────
+  # prior = fraction estimée de positifs parmi les non-labellisés
+  # traversable n'est pas rare → tester des priors élevés
+  - name: nnpu_bce_p30
+    loss: {name: bce_nnpu, prior: 0.30}
+  - name: nnpu_bce_p40
+    loss: {name: bce_nnpu, prior: 0.40}
+  - name: nnpu_bce_p50
+    loss: {name: bce_nnpu, prior: 0.50}
+  - name: nnpu_bce_p60
+    loss: {name: bce_nnpu, prior: 0.60}
+  - name: nnpu_bce_p70
+    loss: {name: bce_nnpu, prior: 0.70}
+
+  # ── nnPU BCE — effet du beta (plancher du risque négatif) ─────────────────
+  # beta > 0 stabilise l'entraînement quand le risque négatif s'effondre
+  - name: nnpu_bce_p50_b001
+    loss: {name: bce_nnpu, prior: 0.50, beta: 0.01}
+  - name: nnpu_bce_p50_b005
+    loss: {name: bce_nnpu, prior: 0.50, beta: 0.05}
+  - name: nnpu_bce_p60_b001
+    loss: {name: bce_nnpu, prior: 0.60, beta: 0.01}
+
+  # ── nnPU Focal — sweep prior × gamma ─────────────────────────────────────
+  # focal comme surrogate : focus sur les exemples difficiles dans les non-labellisés
+  - name: nnpu_focal_p30_g1
+    loss: {name: focal_nnpu, prior: 0.30, gamma: 1.0}
+  - name: nnpu_focal_p30_g2
+    loss: {name: focal_nnpu, prior: 0.30, gamma: 2.0}
+  - name: nnpu_focal_p30_g3
+    loss: {name: focal_nnpu, prior: 0.30, gamma: 3.0}
+  - name: nnpu_focal_p50_g1
+    loss: {name: focal_nnpu, prior: 0.50, gamma: 1.0}
+  - name: nnpu_focal_p50_g2
+    loss: {name: focal_nnpu, prior: 0.50, gamma: 2.0}
+  - name: nnpu_focal_p60_g2
+    loss: {name: focal_nnpu, prior: 0.60, gamma: 2.0}
+  - name: nnpu_focal_p60_g3
+    loss: {name: focal_nnpu, prior: 0.60, gamma: 3.0}
+
+  # ── nnPU Focal + beta ─────────────────────────────────────────────────────
+  - name: nnpu_focal_p50_g2_b001
+    loss: {name: focal_nnpu, prior: 0.50, gamma: 2.0, beta: 0.01}
+  - name: nnpu_focal_p60_g2_b001
+    loss: {name: focal_nnpu, prior: 0.60, gamma: 2.0, beta: 0.01}

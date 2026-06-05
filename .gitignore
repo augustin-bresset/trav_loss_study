@@ -4,3 +4,12 @@
 data
 
 .*/
+
+**egg-info**
+
+.env
+
+**.log
+
+results
+**.rrd

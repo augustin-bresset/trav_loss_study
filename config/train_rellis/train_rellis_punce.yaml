@@ -1,0 +1,51 @@
+data:
+  root:       ~/data/rellis
+  voxel_size: 0.1
+  min_pos:    1
+
+model:
+  in_channels: 4
+  cr:          0.5
+  proj_dim:    64    # dimension de la projection head puNCE
+
+training:
+  epochs:      20    # puNCE converge plus lentement que les losses directes
+  batch_size:  32
+  lr:          0.001
+  weight_decay: 0.0001
+  num_workers: 4
+  device:      cuda
+
+logging:
+  log_dir:  data/logs/rellis_punce/
+  save_dir: data/checkpoints/rellis_punce/
+
+experiments:
+
+  # ── Référence (déjà entraîné) ─────────────────────────────────────────────
+  - name: punce_p10_t05
+    loss: {name: punce, prior: 0.10, temperature: 0.5, cls_weight: 1.0}
+
+  # ── Sweep petits priors (autour de p=0.10 qui est prometteur) ────────────
+  - name: punce_p02_t05
+    loss: {name: punce, prior: 0.02, temperature: 0.5, cls_weight: 1.0}
+  - name: punce_p05_t05
+    loss: {name: punce, prior: 0.05, temperature: 0.5, cls_weight: 1.0}
+  - name: punce_p08_t05
+    loss: {name: punce, prior: 0.08, temperature: 0.5, cls_weight: 1.0}
+  - name: punce_p15_t05
+    loss: {name: punce, prior: 0.15, temperature: 0.5, cls_weight: 1.0}
+  - name: punce_p20_t05
+    loss: {name: punce, prior: 0.20, temperature: 0.5, cls_weight: 1.0}
+
+  # ── Effet température autour du meilleur prior (p=0.10) ──────────────────
+  - name: punce_p10_t02
+    loss: {name: punce, prior: 0.10, temperature: 0.2, cls_weight: 1.0}
+  - name: punce_p10_t10
+    loss: {name: punce, prior: 0.10, temperature: 1.0, cls_weight: 1.0}
+
+  # ── Effet cls_weight autour du meilleur prior (p=0.10) ───────────────────
+  - name: punce_p10_t05_cw05
+    loss: {name: punce, prior: 0.10, temperature: 0.5, cls_weight: 0.5}
+  - name: punce_p10_t05_cw20
+    loss: {name: punce, prior: 0.10, temperature: 0.5, cls_weight: 2.0}

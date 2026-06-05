@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -31,6 +32,7 @@ class Trainer:
         weight_decay: float = 1e-4,
         log_dir: str | Path = "runs",
         save_dir: str | Path = "checkpoints",
+        full_metrics: bool = False,
     ) -> None:
         self.model        = model
         self.criterion    = criterion
@@ -47,6 +49,7 @@ class Trainer:
         )
         self.scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
 
+        self.full_metrics = full_metrics
         self.log_dir  = str(log_dir)
         self.save_dir = str(save_dir)
         os.makedirs(self.log_dir,  exist_ok=True)
@@ -76,7 +79,11 @@ class Trainer:
             if vm["f1"] > best_f1:
                 best_f1 = vm["f1"]
                 ckpt = os.path.join(self.save_dir, "best.pth")
-                torch.save(self.model.state_dict(), ckpt)
+                # Pour SparseTravNetPUNCE : sauvegarde uniquement le backbone
+                sd = (self.model.backbone.state_dict()
+                      if hasattr(self.model, "backbone")
+                      else self.model.state_dict())
+                torch.save(sd, ckpt)
                 print(f"  → best saved (f1={best_f1:.4f})")
 
         self.writer.close()
@@ -85,9 +92,10 @@ class Trainer:
 
     def _train_epoch(self, epoch: int) -> dict[str, float]:
         self.model.train()
-        losses  = []
-        metrics = BinaryMetrics()
-        use_amp = self.device.type == "cuda"
+        loss_acc  = torch.tensor(0.0, device=self.device)
+        n_batches = 0
+        metrics   = BinaryMetrics()
+        use_amp   = self.device.type == "cuda"
 
         for i, batch in enumerate(self.train_loader):
             st     = batch["sparse_input"].to(self.device)
@@ -98,8 +106,8 @@ class Trainer:
             self.optimizer.zero_grad()
             try:
                 with torch.amp.autocast("cuda", enabled=use_amp):
-                    logits = self.model(st)
-                    loss   = self.criterion(logits, labels.float())
+                    out  = self.model(st)
+                    loss = self.criterion(out, labels.float())
             except Exception:
                 continue
 
@@ -109,24 +117,28 @@ class Trainer:
             self.scaler.step(self.optimizer)
             self.scaler.update()
 
-            losses.append(loss.item())
-            metrics.update(logits.detach(), labels)
+            logits = out[0].detach() if isinstance(out, tuple) else out.detach()
+            loss_acc += loss.detach()
+            n_batches += 1
+            metrics.update(logits, labels)
             print(
-                f"\rEpoch {epoch}/{self.epochs} [{i+1}/{len(self.train_loader)}]"
-                f"  loss={np.mean(losses):.4f}",
+                f"\rEpoch {epoch}/{self.epochs} [{i+1}/{len(self.train_loader)}]",
                 end="",
             )
 
         print()
-        self.scheduler.step()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            self.scheduler.step()
 
         result = metrics.compute()
-        result["loss"] = float(np.mean(losses)) if losses else float("nan")
+        result["loss"] = (loss_acc / n_batches).item() if n_batches else float("nan")
         return result
 
     def _val_epoch(self, epoch: int) -> dict[str, float]:
         self.model.eval()
-        losses         = []
+        loss_acc       = torch.tensor(0.0, device=self.device)
+        n_batches      = 0
         metrics        = BinaryMetrics()
         ranking        = RankingMetrics()
         calibration    = CalibrationMetrics()
@@ -142,30 +154,28 @@ class Trainer:
                     continue
                 try:
                     with torch.amp.autocast("cuda", enabled=use_amp):
-                        logits = self.model(st)
-                        loss   = self.criterion(logits, labels.float())
+                        out  = self.model(st)
+                        loss = self.criterion(out, labels.float())
                 except Exception:
                     continue
 
-                losses.append(loss.item())
+                logits = out[0] if isinstance(out, tuple) else out
+                loss_acc += loss.detach()
+                n_batches += 1
 
-                # When alt_labels (semantic GT) is available, use it as the
-                # evaluation reference — training loss stays on traj-GT (labels)
-                # but metrics reflect how well the model predicts true traversability.
                 eval_labels = alt.to(self.device) if alt is not None else labels
                 metrics.update(logits, eval_labels)
-                ranking.update(logits, eval_labels)
-                calibration.update(logits, eval_labels)
-
-                # Also track agreement between traj-GT and semantic-GT predictions
-                if alt is not None:
-                    alt_agreements.append(terrain_agreement(logits.cpu(), labels.cpu()))
+                if self.full_metrics:
+                    ranking.update(logits, eval_labels)
+                    calibration.update(logits, eval_labels)
+                    if alt is not None:
+                        alt_agreements.append(terrain_agreement(logits.cpu(), labels.cpu()))
 
         result = {
             **metrics.compute(),
             **ranking.compute(),
             **calibration.compute(),
-            "loss":           float(np.mean(losses)) if losses else float("nan"),
+            "loss":           (loss_acc / n_batches).item() if n_batches else float("nan"),
             "gt_sem_agree":   float(np.mean(alt_agreements)) if alt_agreements else float("nan"),
         }
         return result

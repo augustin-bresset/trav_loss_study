@@ -87,7 +87,7 @@ class GeneralizedCrossEntropy(nn.Module):
     def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
         targets = targets.float()
         prob    = torch.sigmoid(logits)
-        p_y     = torch.where(targets == 1, prob, 1.0 - prob)
+        p_y     = torch.where(targets == 1, prob, 1.0 - prob).clamp(min=1e-7)
         return ((1.0 - p_y.pow(self.q)) / self.q).mean()
 
     def __repr__(self) -> str:

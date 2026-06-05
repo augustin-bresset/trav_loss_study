@@ -48,19 +48,25 @@ class BinaryMetrics:
     def __init__(self, threshold: float = 0.5, beta: float = 2.0) -> None:
         self.threshold = threshold
         self.beta      = beta
-        self.TP = self.FP = self.FN = self.TN = 0
+        # int 0 so first += promotes to a GPU tensor matching the input device.
+        self._tp = self._fp = self._fn = self._tn = 0
 
     def update(self, logits: torch.Tensor, labels: torch.Tensor) -> None:
-        preds = (torch.sigmoid(logits) > self.threshold).cpu().numpy().astype(bool)
-        y     = labels.cpu().numpy().astype(bool)
-        self.TP += int(( preds &  y).sum())
-        self.FP += int(( preds & ~y).sum())
-        self.FN += int((~preds &  y).sum())
-        self.TN += int((~preds & ~y).sum())
+        with torch.no_grad():
+            preds = torch.sigmoid(logits) > self.threshold
+            y     = labels.bool()
+            self._tp += ( preds &  y).sum()
+            self._fp += ( preds & ~y).sum()
+            self._fn += (~preds &  y).sum()
+            self._tn += (~preds & ~y).sum()
 
     def compute(self) -> dict[str, float]:
         eps = 1e-8
-        TP, FP, FN, TN = self.TP, self.FP, self.FN, self.TN
+        # Single .item() call per counter — one GPU sync at end of epoch
+        TP = self._tp.item()
+        FP = self._fp.item()
+        FN = self._fn.item()
+        TN = self._tn.item()
         total = TP + FP + FN + TN
 
         prec = TP / (TP + FP + eps)

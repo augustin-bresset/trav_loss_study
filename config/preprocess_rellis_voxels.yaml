@@ -1,0 +1,5 @@
+data:
+  root:       ~/data/rellis  # RELLIS root (parent of Rellis-3D/)
+  voxel_size: 0.1            # voxel edge length (metres)
+  max_rad:    50.0           # range filter (metres)
+  reduction:  first       # per-voxel point reduction: centroid | first | random

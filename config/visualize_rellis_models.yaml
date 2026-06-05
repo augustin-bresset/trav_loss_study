@@ -1,0 +1,323 @@
+data:
+  root:        ~/data/rellis
+  sequence_id: "00000"   # sequence to visualize (one of 00000–00004)
+  every:       3         # show every N frames to keep Rerun responsive
+
+
+inference:
+  device:     cuda
+  cr:         0.5   # fallback for models without explicit cr (loss-study checkpoints)
+  voxel_size: 0.1
+  max_rad:    50.0
+
+
+  
+models:
+  - name:       "BCE"
+    checkpoint: data/checkpoints/rellis_cv/fold0_00000/bce/best.pth
+
+
+## Augment 
+
+  - name:       "BCE pw 60 Augment" 
+    arch:       travnet
+    cr:         0.5
+    checkpoint: data/checkpoints/rellis_augment/fold0_00000/bce_pw60_aug/best.pth
+ 
+
+## PU NCE
+
+  - name:       "punce_p10_t05"
+    arch:        travnet
+    cr:          0.5
+    checkpoint:  data/checkpoints/rellis_punce/fold0_00000/punce_p10_t05/best.pth
+
+## nnPU
+
+  - name:       "nnpu_bce_p30"
+    arch:        travnet
+    cr:          0.5
+    checkpoint:  data/checkpoints/rellis_nnpu/fold0_00000/nnpu_bce_p30/best.pth
+  # - name:       "nnpu_bce_p40"
+  #   arch:        travnet
+  #   cr:          0.5
+  #   checkpoint:  data/checkpoints/rellis_nnpu/fold0_00000/nnpu_bce_p40/best.pth
+  # - name:       "nnpu_bce_p50"
+  #   arch:        travnet
+  #   cr:          0.5
+  #   checkpoint:  data/checkpoints/rellis_nnpu/fold0_00000/nnpu_bce_p50/best.pth
+  # - name:       "nnpu_bce_p60"
+  #   arch:        travnet
+  #   cr:          0.5
+  #   checkpoint:  data/checkpoints/rellis_nnpu/fold0_00000/nnpu_bce_p60/best.pth
+  # - name:       "nnpu_bce_p70"
+  #   arch:        travnet
+  #   cr:          0.5
+  #   checkpoint:  data/checkpoints/rellis_nnpu/fold0_00000/nnpu_bce_p70/best.pth
+
+  # - name:       "nnpu_bce_p50_b001"
+  #   arch:        travnet
+  #   cr:          0.5
+  #   checkpoint:  data/checkpoints/rellis_nnpu/fold0_00000/nnpu_bce_p50_b001/best.pth
+
+  # # - name:       "nnpu_bce_p50_b005"
+  #   arch:        travnet
+  #   cr:          0.5
+  #   checkpoint:  data/checkpoints/rellis_nnpu/fold0_00000/nnpu_bce_p50_b005/best.pth
+
+  # - name:       "nnpu_bce_p60_b001"
+  #   arch:        travnet
+  #   cr:          0.5
+  #   checkpoint:  data/checkpoints/rellis_nnpu/fold0_00000/nnpu_bce_p60_b001/best.pth
+
+  # - name:       "nnpu_focal_p30_g1"
+  #   arch:        travnet
+  #   cr:          0.5
+  #   checkpoint:  data/checkpoints/rellis_nnpu/fold0_00000/nnpu_focal_p30_g1/best.pth
+
+  # - name:       "nnpu_focal_p30_g2"
+  #   arch:        travnet
+  #   cr:          0.5
+  #   checkpoint:  data/checkpoints/rellis_nnpu/fold0_00000/nnpu_focal_p30_g2/best.pth
+
+  # - name:       "nnpu_focal_p30_g3"
+  #   arch:        travnet
+  #   cr:          0.5
+  #   checkpoint:  data/checkpoints/rellis_nnpu/fold0_00000/nnpu_focal_p30_g3/best.pth
+
+  # - name:       "nnpu_focal_p50_g1"
+  #   arch:        travnet
+  #   cr:          0.5
+  #   checkpoint:  data/checkpoints/rellis_nnpu/fold0_00000/nnpu_focal_p50_g1/best.pth
+
+  # - name:       "nnpu_focal_p50_g2"
+  #   arch:        travnet
+  #   cr:          0.5
+  #   checkpoint:  data/checkpoints/rellis_nnpu/fold0_00000/nnpu_focal_p50_g2/best.pth
+
+  # - name:       "nnpu_focal_p60_g2"
+  #   arch:        travnet
+  #   cr:          0.5
+  #   checkpoint:  data/checkpoints/rellis_nnpu/fold0_00000/nnpu_focal_p60_g2/best.pth
+
+
+## ASL Hyper Parameters
+
+  # - name:       "asl_gp10_gn40_c05"
+  #   arch :      travnet
+  #   cr   :      0.5
+  #   checkpoint: data/checkpoints/rellis_asym/fold0_00000/asl_gp10_gn40_c05/best.pth
+
+  # - name:       "asl_gp10_gn40_c10"
+  #   arch :      travnet
+  #   cr   :      0.5
+  #   checkpoint: data/checkpoints/rellis_asym/fold0_00000/asl_gp10_gn40_c10/best.pth
+
+  # - name:       "asl_gp20_gn40_c05"
+  #   arch :      travnet
+  #   cr   :      0.5
+  #   checkpoint: data/checkpoints/rellis_asym/fold0_00000/asl_gp20_gn40_c05/best.pth
+
+  # - name:       "asl_gp20_gn40_c10"
+  #   arch :      travnet
+  #   cr   :      0.5
+  #   checkpoint: data/checkpoints/rellis_asym/fold0_00000/asl_gp20_gn40_c10/best.pth
+
+  # - name:       "asl_gp20_gn60_c05"
+  #   arch :      travnet
+  #   cr   :      0.5
+  #   checkpoint: data/checkpoints/rellis_asym/fold0_00000/asl_gp20_gn60_c05/best.pth
+
+  # - name:       "asl_gp30_gn50_c05"
+  #   arch :      travnet
+  #   cr   :      0.5
+  #   checkpoint: data/checkpoints/rellis_asym/fold0_00000/asl_gp30_gn50_c05/best.pth
+
+  # - name:       "asl_gp30_gn50_c10"
+  #   arch :      travnet
+  #   cr   :      0.5
+  #   checkpoint: data/checkpoints/rellis_asym/fold0_00000/asl_gp30_gn50_c10/best.pth
+
+  # - name:       "asl_gp30_gn70_c05"
+  #   arch :      travnet
+  #   cr   :      0.5
+  #   checkpoint: data/checkpoints/rellis_asym/fold0_00000/asl_gp30_gn70_c05/best.pth
+
+## BCE Weight Pos
+  # - name:       "BCE pw 20" 
+  #   arch:       travnet
+  #   cr:         0.5
+  #   checkpoint: data/checkpoints/rellis_posweight_study/fold0_00000/bce_pw20/best.pth
+  # - name:       "BCE pw 40" 
+  #   arch:       travnet
+  #   cr:         0.5
+  #   checkpoint: data/checkpoints/rellis_posweight_study/fold0_00000/bce_pw40/best.pth
+  - name:       "BCE pw 60" 
+    arch:       travnet
+    cr:         0.5
+    checkpoint: data/checkpoints/rellis_posweight_study/fold0_00000/bce_pw60/best.pth
+  # - name:       "BCE pw 80" 
+  #   arch:       travnet
+  #   cr:         0.5
+  #   checkpoint: data/checkpoints/rellis_posweight_study/fold0_00000/bce_pw80/best.pth
+  # - name:       "BCE pw 100" 
+  #   arch:       travnet
+  #   cr:         0.5
+  #   checkpoint: data/checkpoints/rellis_posweight_study/fold0_00000/bce_pw100/best.pth
+
+
+## FOCAL Gamma (pos weight 60)
+  # - name:       "Focal gamma 0.5 pw 60" 
+  #   arch:       travnet
+  #   cr:         0.5
+  #   checkpoint: data/checkpoints/rellis_focal_gamma/fold0_00000/focal_g05_pw60/best.pth
+  # - name:       "Focal gamma 1 pw 60" 
+  #   arch:       travnet
+  #   cr:         0.5
+  #   checkpoint: data/checkpoints/rellis_focal_gamma/fold0_00000/focal_g10_pw60/best.pth
+  - name:       "Focal gamma 15 pw 60" 
+    arch:       travnet
+    cr:         0.5
+    checkpoint: data/checkpoints/rellis_focal_gamma/fold0_00000/focal_g15_pw60/best.pth
+  # - name:       "Focal gamma 2 pw 60" 
+  #   arch:       travnet
+  #   cr:         0.5
+  #   checkpoint: data/checkpoints/rellis_focal_gamma/fold0_00000/focal_g20_pw60/best.pth
+  # - name:       "Focal gamma 2.5 pw 60" 
+  #   arch:       travnet
+  #   cr:         0.5
+  #   checkpoint: data/checkpoints/rellis_focal_gamma/fold0_00000/focal_g25_pw60/best.pth
+  # - name:       "Focal gamma 3 pw 60" 
+  #   arch:       travnet
+  #   cr:         0.5
+  #   checkpoint: data/checkpoints/rellis_focal_gamma/fold0_00000/focal_g30_pw60/best.pth
+  # - name:       "Focal gamma 4 pw 60" 
+  #   arch:       travnet
+  #   cr:         0.5
+  #   checkpoint: data/checkpoints/rellis_focal_gamma/fold0_00000/focal_g40_pw60/best.pth
+  # - name:       "Focal gamma 5 pw 60" 
+  #   arch:       travnet
+  #   cr:         0.5
+  #   checkpoint: data/checkpoints/rellis_focal_gamma/fold0_00000/focal_g50_pw60/best.pth
+  # - name:       "Focal gamma 6 pw 60" 
+  #   arch:       travnet
+  #   cr:         0.5
+  #   checkpoint: data/checkpoints/rellis_focal_gamma/fold0_00000/focal_g60_pw60/best.pth
+  # - name:       "Focal gamma 10 pw 60" 
+  #   arch:       travnet
+  #   cr:         0.5
+  #   checkpoint: data/checkpoints/rellis_focal_gamma/fold0_00000/focal_g100_pw60/best.pth
+
+
+## Focal Hyperparameters
+  # - name:       "Focal gamma 2 pw 60" 
+  #   arch:       travnet
+  #   cr:         0.5
+  #   checkpoint: data/checkpoints/rellis_hparam_imbalance/fold0_00000/focal_g20_pw60/best.pth
+  # - name:       "Focal gamma 2 pw 40" 
+  #   arch:       travnet
+  #   cr:         0.5
+  #   checkpoint: data/checkpoints/rellis_hparam_imbalance/fold0_00000/focal_g20_pw40/best.pth
+  # - name:       "Focal gamma 1 pw 40" 
+  #   arch:       travnet
+  #   cr:         0.5
+  #   checkpoint: data/checkpoints/rellis_hparam_imbalance/fold0_00000/focal_g10_pw40/best.pth
+  
+
+
+
+
+
+## Hyper Param Loss data/checkpoints/rellis_hparam_imbalance
+
+  # - name:       "Focal gamma 2 pw 12" 
+  #   arch:       travnet
+  #   cr:         0.5
+  #   checkpoint: data/checkpoints/rellis_hparam_imbalance/fold0_00000/focal_g20_pw12/best.pth
+
+  # - name:       "Asymmetric gn6 c20" 
+  #   arch:       travnet
+  #   cr:         0.5
+  #   checkpoint: data/checkpoints/rellis_hparam_imbalance/fold0_00000/asl_gn6_c20/best.pth
+
+
+## MODEL STUDY — fold0 (val=00000)
+  # - name:       "TravNet cr=0.25"
+  #   arch:       travnet
+  #   cr:         0.25
+  #   checkpoint: data/checkpoints/rellis_cv_model/fold0_00000/travnet_cr025/best.pth
+
+  # - name:       "TravNet cr=0.5"
+  #   arch:       travnet
+  #   cr:         0.5
+  #   checkpoint: data/checkpoints/rellis_cv_model/fold0_00000/travnet_cr05/best.pth
+
+  # - name:       "TravNet cr=1.0"
+  #   arch:       travnet
+  #   cr:         1.0
+  #   checkpoint: data/checkpoints/rellis_cv_model/fold0_00000/travnet_cr10/best.pth
+
+  # - name:       "MinkUNet cr=0.25"
+  #   arch:       minkunet
+  #   cr:         0.25
+  #   checkpoint: data/checkpoints/rellis_cv_model/fold0_00000/minkunet_cr025/best.pth
+
+  # - name:       "MinkUNet cr=0.5"
+  #   arch:       minkunet
+  #   cr:         0.5
+  #   checkpoint: data/checkpoints/rellis_cv_model/fold0_00000/minkunet_cr05/best.pth
+
+
+## PILOT
+  # - name:       "BCE"
+  #   checkpoint: data/checkpoints/rellis_cv_pilot/fold0_00000/bce/best.pth
+  # - name:       "Focal"
+  #   checkpoint: data/checkpoints/rellis_cv_pilot/fold0_00000/focal/best.pth
+
+
+  # - name:       "ASL"
+  #   checkpoint: data/checkpoints/rellis_cv_pilot/fold0_00000/asl/best.pth
+  # - name:       "Lovasz"
+  #   checkpoint: data/checkpoints/rellis_cv_pilot/fold0_00000/lovasz/best.pth
+
+
+
+## FULL
+  # - name:       "Focal"
+  #   checkpoint: data/checkpoints/rellis_cv/fold0_00000/focal/best.pth
+
+
+  # - name:       "ASL"
+  #   checkpoint: data/checkpoints/rellis_cv/fold0_00000/asl/best.pth
+  # - name:       "Tversky"
+  #   checkpoint: data/checkpoints/rellis_cv/fold0_00000/tversky/best.pth
+  # - name:       "Focal Tversky"
+  #   checkpoint: data/checkpoints/rellis_cv/fold0_00000/focal_tversky/best.pth
+  # - name:       "Lovasz"
+  #   checkpoint: data/checkpoints/rellis_cv/fold0_00000/lovasz/best.pth
+
+
+  # - name:       "Bce Dice"
+  #   checkpoint: data/checkpoints/rellis_cv/fold0_00000/bce_dice/best.pth
+  # - name:       "BCE Lovasz"
+  #   checkpoint: data/checkpoints/rellis_cv/fold0_00000/bce_lovasz/best.pth
+  # - name:       "Focal Dice"
+  #   checkpoint: data/checkpoints/rellis_cv/fold0_00000/focal_dice/best.pth
+
+
+  # - name:       "SCE"
+  #   checkpoint: data/checkpoints/rellis_cv/fold0_00000/sce/best.pth
+  # - name:       "GCE"
+  #   checkpoint: data/checkpoints/rellis_cv/fold0_00000/gce/best.pth
+
+
+  # - name:       "nnPU20"
+  #   checkpoint: data/checkpoints/rellis_cv/fold0_00000/nnpu_p20/best.pth
+  # - name:       "nnPU30"
+  #   checkpoint: data/checkpoints/rellis_cv/fold0_00000/nnpu_p30/best.pth
+  # - name:       "nnPU40"
+  #   checkpoint: data/checkpoints/rellis_cv/fold0_00000/nnpu_p40/best.pth
+  # - name:       "FocalnnPU30"
+  #   checkpoint: data/checkpoints/rellis_cv/fold0_00000/focal_nnpu_p30/best.pth
+
+

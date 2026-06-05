@@ -7,6 +7,7 @@ from .hybrid         import BCEDiceLoss, BCELovaszLoss, FocalDiceLoss
 from .lovász_hinge   import BinaryLovaszHingeLoss
 from .nnpu_bce       import nnPULoss as BCEnnPULoss
 from .nnpu_focal     import FocalnnPULoss
+from .punce          import PUNCELoss
 from .sce_gce        import SymmetricCrossEntropy, GeneralizedCrossEntropy
 from .tversky        import BinaryTverskyLoss
 from .upu_bce        import uPULoss as BCEuPULoss
@@ -71,6 +72,18 @@ TRAV_LOSSES = {
                       gamma=cfg.get("gamma", 2.0),
                       beta=cfg.get("beta", 0.0),
                   ),
+    # ── Contrastive PU ────────────────────────────────────────────────────
+    # Requires SparseTravNetPUNCE (wrapper model) — returns (logits, embeddings)
+    "punce":      lambda cfg: PUNCELoss(
+                      prior=cfg.get("prior", 0.3),
+                      temperature=cfg.get("temperature", 0.5),
+                      cls_loss=BCEnnPULoss(
+                          prior=cfg.get("prior", 0.3),
+                          beta=cfg.get("beta", 0.0),
+                      ),
+                      cls_weight=cfg.get("cls_weight", 1.0),
+                      max_voxels=cfg.get("max_voxels", 2048),
+                  ),
 }
 
 __all__ = [
@@ -86,6 +99,7 @@ __all__ = [
     "FocalnnPULoss",
     "FocalTverskyLoss",
     "GeneralizedCrossEntropy",
+    "PUNCELoss",
     "SymmetricCrossEntropy",
     "TRAV_LOSSES",
 ]

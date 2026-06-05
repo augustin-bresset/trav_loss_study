@@ -18,22 +18,26 @@ from __future__ import annotations
 
 import argparse
 import csv
+import gc
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 
 import numpy as np
 import torch
 import yaml
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 
 sys.path.insert(0, str(Path(__file__).parents[2]))
 
-from src.datasets import RellisTorchDataset, sparse_collate
+from apairo import Rellis3DDataset
+from src.datasets import RellisTorchDataset, RotatedDataset, filter_min_pos, sparse_collate
 from src.losses.binary_class import TRAV_LOSSES
 from src.metrics import BinaryMetrics, RankingMetrics, CalibrationMetrics
 from src.models.sparse_trav_net import SparseTravNet
+from src.models.sparse_trav_net_punce import SparseTravNetPUNCE
 from src.trainer import Trainer
 
 
@@ -45,6 +49,16 @@ EXPERIMENTS: list[dict] = [
     # ── Baselines ─────────────────────────────────────────────────────────
     {"name": "bce",           "loss": {"name": "bce"}},
     {"name": "focal",         "loss": {"name": "focal",  "gamma": 2.0, "pos_weight": 3.6}},
+
+    # ── POS Weight Study  ─────────────────────────────────────────────────
+    {"name": "bce_pw20",           "loss": {"name": "bce", "pos_weight": 20}},
+    {"name": "bce_pw40",           "loss": {"name": "bce", "pos_weight": 40}},
+    {"name": "bce_pw60",           "loss": {"name": "bce", "pos_weight": 60}},
+    {"name": "bce_pw80",           "loss": {"name": "bce", "pos_weight": 80}},
+    {"name": "bce_pw100",           "loss": {"name": "bce", "pos_weight": 100}},
+
+
+
     # ── Imbalance / focus ─────────────────────────────────────────────────
     {"name": "asl",           "loss": {"name": "asl",    "gamma_neg": 4.0, "asl_clip": 0.05}},
     {"name": "tversky",       "loss": {"name": "tversky","tversky_alpha": 0.3, "tversky_beta": 0.7}},
@@ -69,25 +83,37 @@ EXPERIMENTS: list[dict] = [
 # Config helpers
 # ---------------------------------------------------------------------------
 
-def _discover_sequences(root: Path) -> list[str]:
-    """Return sorted sequence IDs from the RELLIS-3D filesystem layout.
-
-    Handles both  root/Rellis-3D/{seq_id}/  and  root/{seq_id}/  layouts.
-    """
-    candidate = root / "Rellis-3D"
-    search_dir = candidate if candidate.is_dir() else root
-    seq_ids = sorted(
-        d.name for d in search_dir.iterdir()
-        if d.is_dir() and not d.name.startswith(".")
-    )
-    if not seq_ids:
-        raise FileNotFoundError(f"No sequence directories found under {search_dir}")
-    return seq_ids
-
-
 def load_cfg(path: str) -> dict:
     with open(path) as f:
         return yaml.safe_load(f)
+
+
+class _CachedDataset(Dataset):
+    def __init__(self, dataset: Dataset) -> None:
+        print(f"    caching {len(dataset)} samples into RAM…", flush=True)
+        self._data = [dataset[i] for i in range(len(dataset))]
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+    def __getitem__(self, i: int):
+        return self._data[i]
+
+
+def build_fold_datasets(
+    train_ids: list[str],
+    val_ids: list[str],
+    cfg: dict,
+) -> tuple[Dataset, Dataset]:
+    dc = cfg["data"]
+    root = str(Path(dc["root"]).expanduser())
+    voxel_size = dc["voxel_size"]
+    train_ds = _CachedDataset(filter_min_pos(
+        RellisTorchDataset(root_dir=root, sequence_ids=train_ids, voxel_size=voxel_size),
+        min_pos=dc.get("min_pos", 1),
+    ))
+    val_ds = _CachedDataset(RellisTorchDataset(root_dir=root, sequence_ids=val_ids, voxel_size=voxel_size))
+    return train_ds, val_ds
 
 
 # ---------------------------------------------------------------------------
@@ -96,52 +122,67 @@ def load_cfg(path: str) -> dict:
 
 def run_one(
     exp: dict,
-    train_ids: list[str],
-    val_ids: list[str],
+    train_ds: Dataset,
+    val_ds: Dataset,
     cfg: dict,
     log_dir: str,
     save_dir: str,
+    overwrite: bool = False,
 ) -> dict[str, float]:
-    dc = cfg["data"]
     tc = cfg["training"]
     mc = cfg["model"]
 
-    train_ds = RellisTorchDataset(
-        root_dir=dc["root"],
-        sequence_ids=train_ids,
-        voxel_size=dc["voxel_size"],
-        max_rad=dc["max_rad"],
-        min_pos=dc.get("min_pos", 1),
-    )
-    val_ds = RellisTorchDataset(
-        root_dir=dc["root"],
-        sequence_ids=val_ids,
-        voxel_size=dc["voxel_size"],
-        max_rad=dc["max_rad"],
-        min_pos=0,  # keep all val scans regardless of label density
-    )
+    metrics_path = os.path.join(save_dir, "metrics.json")
+
+    if overwrite:
+        if os.path.exists(metrics_path):
+            os.remove(metrics_path)
+        for d in (log_dir, save_dir):
+            if os.path.isdir(d):
+                shutil.rmtree(d)
+            os.makedirs(d, exist_ok=True)
+
+    # Resume: completed runs are cached in metrics.json
+    if os.path.exists(metrics_path):
+        with open(metrics_path) as f:
+            cached = json.load(f)
+        print(f"    [SKIP] already done — loaded from {metrics_path}")
+        return cached
 
     if len(train_ds) == 0 or len(val_ds) == 0:
         return {}
 
+    # Augmentation Z-rotation — activée par expérience, jamais sur val
+    dc = cfg["data"]
+    if exp.get("augment", dc.get("augment", False)):
+        train_ds = RotatedDataset(train_ds, dc["voxel_size"])
+        print(f"    augmentation: Z-rotation activée")
+
+    num_workers = tc.get("num_workers", 0)
     train_loader = DataLoader(
         train_ds, batch_size=tc["batch_size"], shuffle=True,
-        num_workers=tc.get("num_workers", 4), pin_memory=True,
+        num_workers=num_workers, pin_memory=True, persistent_workers=num_workers > 0,
         collate_fn=sparse_collate, drop_last=True,
     )
     val_loader = DataLoader(
         val_ds, batch_size=tc["batch_size"], shuffle=False,
-        num_workers=tc.get("num_workers", 4), pin_memory=True,
+        num_workers=num_workers, pin_memory=True, persistent_workers=num_workers > 0,
         collate_fn=sparse_collate,
     )
 
-    device = torch.device(tc["device"] if torch.cuda.is_available() else "cpu")
-    model  = SparseTravNet(
+    device  = torch.device(tc["device"] if torch.cuda.is_available() else "cpu")
+    backbone = SparseTravNet(
         in_channels=mc.get("in_channels", 4),
         cr=mc.get("cr", 1.0),
     ).to(device)
+    loss_name = exp["loss"]["name"]
+    model = (
+        SparseTravNetPUNCE(backbone, proj_dim=mc.get("proj_dim", 64)).to(device)
+        if loss_name == "punce"
+        else backbone
+    )
 
-    criterion = TRAV_LOSSES[exp["loss"]["name"]](exp["loss"]).to(device)
+    criterion = TRAV_LOSSES[loss_name](exp["loss"]).to(device)
 
     trainer = Trainer(
         model=model,
@@ -158,9 +199,14 @@ def run_one(
     trainer.fit()
 
     # Final snapshot — load best checkpoint and evaluate
+    # best.pth is saved as backbone.state_dict() for SparseTravNetPUNCE
     best_ckpt = os.path.join(save_dir, "best.pth")
     if os.path.exists(best_ckpt):
-        model.load_state_dict(torch.load(best_ckpt, map_location=device))
+        sd = torch.load(best_ckpt, map_location=device)
+        if hasattr(model, "backbone"):
+            model.backbone.load_state_dict(sd)
+        else:
+            model.load_state_dict(sd)
     model.eval()
 
     bm  = BinaryMetrics()
@@ -175,16 +221,20 @@ def run_one(
             if st.feats.shape[0] == 0:
                 continue
             try:
-                logits = model(st)
+                out = model(st)
             except Exception:
                 continue
+            logits = out[0] if isinstance(out, tuple) else out
             # Evaluate against semantic GT when available (cleaner reference)
             eval_labels = sem_gt.to(device) if sem_gt is not None else traj_gt
             bm.update(logits, eval_labels)
             rm.update(logits, eval_labels)
             cal.update(logits, eval_labels)
 
-    return {**bm.compute(), **rm.compute(), **cal.compute()}
+    metrics = {**bm.compute(), **rm.compute(), **cal.compute()}
+    with open(metrics_path, "w") as f:
+        json.dump(metrics, f, indent=2)
+    return metrics
 
 
 # ---------------------------------------------------------------------------
@@ -208,23 +258,31 @@ def kendalls_w(rank_matrix: np.ndarray) -> float:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config",  default="resources/train_rellis_cv.yaml")
-    parser.add_argument("--losses",  nargs="+", help="Subset of experiment names")
-    parser.add_argument("--folds",   nargs="+", type=int, help="Subset of fold indices (0-based)")
-    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--config",    default="resources/train_rellis_cv.yaml")
+    parser.add_argument("--losses",    nargs="+", help="Subset of experiment names")
+    parser.add_argument("--folds",     nargs="+", type=int, help="Subset of fold indices (0-based)")
+    parser.add_argument("--dry-run",   action="store_true")
+    parser.add_argument("--overwrite", action="store_true",
+                        help="Delete existing logs/checkpoints/metrics and retrain from scratch")
     args = parser.parse_args()
 
     cfg = load_cfg(args.config)
 
-    # Discover RELLIS sequences from filesystem (Rellis-3D/{seq_id}/ layout)
-    seq_ids = _discover_sequences(Path(cfg["data"]["root"]))
+    # sequence_ids n'est pas encore supporté sur les channels dérivés dans Apairo
+    seq_ids = Rellis3DDataset(
+        root_dir=str(Path(cfg["data"]["root"]).expanduser()),
+        keys=["lidar"],
+    ).sequence_ids
     print(f"Found {len(seq_ids)} RELLIS sequences: {seq_ids}")
 
     if len(seq_ids) < 2:
         print("Need at least 2 sequences for cross-validation.")
         sys.exit(1)
 
-    experiments = [e for e in EXPERIMENTS
+    # Load experiments from YAML if key present, fallback to hardcoded list
+    yaml_exps = cfg.get("experiments")
+    base_experiments = yaml_exps if yaml_exps is not None else EXPERIMENTS
+    experiments = [e for e in base_experiments
                    if args.losses is None or e["name"] in args.losses]
     fold_indices = list(range(len(seq_ids)))
     if args.folds is not None:
@@ -250,6 +308,14 @@ def main() -> None:
         print(f"  FOLD {fold_idx}  —  val: {val_seq}  |  train: {train_ids}")
         print(f"{'='*70}")
 
+        if not args.dry_run:
+            try:
+                del train_ds, val_ds
+                gc.collect()
+            except NameError:
+                pass
+            train_ds, val_ds = build_fold_datasets(train_ids, [val_seq], cfg)
+
         for exp in experiments:
             print(f"\n  [{exp['name']}]  loss={exp['loss']['name']}")
 
@@ -263,7 +329,8 @@ def main() -> None:
             os.makedirs(save_dir, exist_ok=True)
 
             try:
-                metrics = run_one(exp, train_ids, [val_seq], cfg, log_dir, save_dir)
+                metrics = run_one(exp, train_ds, val_ds, cfg, log_dir, save_dir,
+                                  overwrite=args.overwrite)
             except Exception as e:
                 print(f"  ERROR: {e}")
                 metrics = {}

@@ -1,10 +1,6 @@
 __init__
-core
 datasets
 losses
+metrics
 models
-preprocessing
-scripts
-transforms
-utils
-visualization
+trainer

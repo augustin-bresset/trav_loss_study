@@ -8,12 +8,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
+from ..asymmetric import AsymmetricLossOptimized
 # ---------------------------------------------------------------------------
 # Asymmetric Loss (ASL)
 # ---------------------------------------------------------------------------
 
-class BinaryAsymmetricLoss(nn.Module):
+class BinaryAsymmetricLoss(AsymmetricLossOptimized):
     """Asymmetric Loss for binary classification (Ridnik et al. 2021).
 
     Addresses positive/negative imbalance by:
@@ -30,40 +30,10 @@ class BinaryAsymmetricLoss(nn.Module):
         gamma_neg: Focusing exponent for negative examples (default 4).
         clip:      Probability margin shift for negatives [0, 1].
     """
-
-    def __init__(
-        self,
-        gamma_pos: float = 0.0,
-        gamma_neg: float = 4.0,
-        clip: float = 0.05,
-    ) -> None:
-        super().__init__()
-        self.gamma_pos = gamma_pos
-        self.gamma_neg = gamma_neg
-        self.clip = clip
-
-    def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-        targets = targets.float()
-        prob = torch.sigmoid(logits)
-
-        # Shift and clip negative probabilities to remove easy negatives
-        prob_neg = (prob + self.clip).clamp(max=1.0)
-
-        # BCE per point
-        loss_pos = -targets       * torch.log(prob     + 1e-8)
-        loss_neg = -(1 - targets) * torch.log(1 - prob_neg + 1e-8)
-
-        # Asymmetric focusing
-        loss_pos = loss_pos * (1 - prob)     ** self.gamma_pos
-        loss_neg = loss_neg * prob_neg        ** self.gamma_neg
-
-        return (loss_pos + loss_neg).mean()
-
-    def __repr__(self) -> str:
-        return (
-            f"BinaryAsymmetricLoss(gamma_pos={self.gamma_pos}, "
-            f"gamma_neg={self.gamma_neg}, clip={self.clip})"
-        )
+    def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+        """ Take out the criterion of the autocast
+        """
+        return super().forward(x.float(), y.float())
 
 
 if __name__ == "__main__":

@@ -1,0 +1,58 @@
+data:
+  root:       ~/data/rellis
+  voxel_size: 0.1
+  max_rad:    50.0
+  min_pos:    1
+
+model:
+  in_channels: 4
+  cr:          0.5   # travnet_cr05 — fixed backbone from model selection study
+
+training:
+  epochs:      20
+  batch_size:  32
+  lr:          0.001
+  weight_decay: 0.0001
+  num_workers: 4
+  device:      cuda
+
+logging:
+  log_dir:  data/logs/rellis_posweight_study/
+  save_dir: data/checkpoints/rellis_posweight_study/
+
+# ---------------------------------------------------------------------------
+# Hyperparameter grid for imbalance-aware losses — PU context
+#
+# trav_gt is trajectory-based: positives are rare, most "negatives" are
+# unlabeled traversable regions.  Consequence for each loss family:
+#
+#   Focal     — gamma modéré (≤2) pour ne pas sur-focaliser sur les faux
+#               négatifs unlabeled. pos_weight élevé pour compenser le
+#               déséquilibre fort.
+#
+#   ASL       — asl_clip élevé (shift des négatifs) pour déprioriser les
+#               négatifs incertains (probablement unlabeled traversable).
+#               gamma_neg élevé pour down-weighter les négatifs faciles.
+#
+#   Tversky   — alpha faible (peu pénaliser les FP) car les FP sont souvent
+#               des zones traversables non labellisées.
+#               beta élevé (pénaliser les FN) = rappel des vrais positifs.
+# ---------------------------------------------------------------------------
+
+experiments:
+
+  
+  # ── BCE ─────────────────────────────────────────────────────────────────
+  
+  - name: bce_pw20
+    loss: {name: bce, pos_weight: 20.0}
+  - name: bce_pw40
+    loss: {name: bce, pos_weight: 40.0}
+  - name: bce_pw60
+    loss: {name: bce, pos_weight: 60.0}
+  - name: bce_pw80
+    loss: {name: bce, pos_weight: 80.0}
+  - name: bce_pw100
+    loss: {name: bce, pos_weight: 100.0}
+
+

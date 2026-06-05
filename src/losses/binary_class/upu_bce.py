@@ -36,7 +36,7 @@ class uPULoss(nn.Module):
 
     R(f) = π · R_P^+ - π · R_P^- + R_U^-
 
-    where R_U^- - π·R_P^- is an unbiased estimate of R_N^-.
+    where R_U^- - π·R_P^- is an unbiased estimate of (1-π)·R_N^-.
     Can go negative when the model overfits, which causes training instability.
     Prefer nnPULoss in practice.
 

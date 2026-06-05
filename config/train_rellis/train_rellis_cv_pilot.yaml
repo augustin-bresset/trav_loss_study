@@ -9,13 +9,13 @@ model:
   cr:          1.0
 
 training:
-  epochs:      15          # fewer than full training — CV cares about rankings, not best abs perf
-  batch_size:  4
+  epochs:      15
+  batch_size:  16
   lr:          0.001
   weight_decay: 0.0001
   num_workers: 4
   device:      cuda
 
 logging:
-  log_dir:  data/logs/rellis_cv/
-  save_dir: data/checkpoints/rellis_cv/
+  log_dir:  data/logs/rellis_cv_pilot/
+  save_dir: data/checkpoints/rellis_cv_pilot/

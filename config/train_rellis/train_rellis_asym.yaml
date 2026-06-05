@@ -1,0 +1,47 @@
+data:
+  root:       ~/data/rellis
+  voxel_size: 0.1
+  max_rad:    50.0
+  min_pos:    1
+
+model:
+  in_channels: 4
+  cr:          0.5   # travnet_cr05 — fixed backbone from model selection study
+
+training:
+  epochs:      10
+  batch_size:  32
+  lr:          0.001
+  weight_decay: 0.0001
+  num_workers: 4
+  device:      cuda
+
+logging:
+  log_dir:  data/logs/rellis_asym/
+  save_dir: data/checkpoints/rellis_asym/
+
+experiments:
+
+  # ── ASL ───────────────────────────────────────────────────────────────────
+
+  - name: asl_gp10_gn20_c05
+    loss: {name: asl, gamma_pos: 1.0, gamma_neg: 2.0, asl_clip: 0.05}
+  - name: asl_gp10_gn40_c05
+    loss: {name: asl, gamma_pos: 1.0, gamma_neg: 4.0, asl_clip: 0.05}
+  - name: asl_gp10_gn40_c10
+    loss: {name: asl, gamma_pos: 1.0, gamma_neg: 4.0, asl_clip: 0.10}
+
+  - name: asl_gp20_gn40_c05
+    loss: {name: asl, gamma_pos: 2.0, gamma_neg: 4.0, asl_clip: 0.05}
+  - name: asl_gp20_gn40_c10
+    loss: {name: asl, gamma_pos: 2.0, gamma_neg: 4.0, asl_clip: 0.10}
+  - name: asl_gp20_gn60_c05
+    loss: {name: asl, gamma_pos: 2.0, gamma_neg: 6.0, asl_clip: 0.05}
+  
+  
+  - name: asl_gp30_gn50_c05
+    loss: {name: asl, gamma_pos: 3.0, gamma_neg: 5.0, asl_clip: 0.05}
+  - name: asl_gp30_gn50_c10
+    loss: {name: asl, gamma_pos: 3.0, gamma_neg: 5.0, asl_clip: 0.10}
+  - name: asl_gp30_gn70_c05
+    loss: {name: asl, gamma_pos: 3.0, gamma_neg: 7.0, asl_clip: 0.05}
